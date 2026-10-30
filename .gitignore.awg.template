@@ -1,0 +1,27 @@
+# Merge into the real .gitignore before the first commit.
+/bin/
+/dist/
+/build/
+/.local/
+/.private/
+/.cache/
+/.agents/awg-install-report.json
+*.exe
+*.dll
+*.pdb
+*.log
+*.pcap
+*.pcapng
+*.dmp
+*.vpn
+*.conf
+*.key
+*.pem
+.env
+.env.*
+!.env.example
+go.work
+go.work.sum
+coverage.out
+# Add individually reviewed, non-secret fixtures using exact exceptions.
+# Never whitelist a whole directory containing real VPN profiles.

@@ -1,0 +1,5 @@
+interface:
+  display_name: "License gate and two-repository maintenance"
+  short_description: "Project-scoped AWG Local Proxy workflow"
+policy:
+  allow_implicit_invocation: true

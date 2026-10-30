@@ -1,0 +1,5 @@
+interface:
+  display_name: "Go userspace proxy and AmneziaWG integration"
+  short_description: "Project-scoped AWG Local Proxy workflow"
+policy:
+  allow_implicit_invocation: true

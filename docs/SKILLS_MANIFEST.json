@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "prepared_at": "2026-10-30",
+  "scope": "repository",
+  "install_root": "C:\\dev\\GO\\AwgLocalProxy\\.agents\\skills",
+  "source": "Original project-specific instruction-only skills prepared for this user request; no third-party skill code bundled.",
+  "global_configuration_changes": false,
+  "local_windows_installation_performed": false,
+  "skills": [
+    {
+      "name": "awg-go-netstack",
+      "path": ".agents/skills/awg-go-netstack/SKILL.md",
+      "activation": "contextual",
+      "external_dependencies": []
+    },
+    {
+      "name": "awg-windows-fyne",
+      "path": ".agents/skills/awg-windows-fyne/SKILL.md",
+      "activation": "contextual",
+      "external_dependencies": []
+    },
+    {
+      "name": "awg-security-tests",
+      "path": ".agents/skills/awg-security-tests/SKILL.md",
+      "activation": "contextual",
+      "external_dependencies": []
+    },
+    {
+      "name": "awg-github-upstream",
+      "path": ".agents/skills/awg-github-upstream/SKILL.md",
+      "activation": "contextual",
+      "external_dependencies": []
+    },
+    {
+      "name": "awg-release-ci",
+      "path": ".agents/skills/awg-release-ci/SKILL.md",
+      "activation": "contextual",
+      "external_dependencies": []
+    }
+  ]
+}
