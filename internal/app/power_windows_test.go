@@ -9,6 +9,9 @@ import (
 )
 
 func TestNativePowerRegistrationAndSyntheticCallback(t *testing.T) {
+	if powerRegister.Find() != nil || powerUnregister.Find() != nil {
+		t.Skip("modern power notification API unavailable")
+	}
 	var seen atomic.Int32
 	unregister, err := registerPowerEvents(func(e PowerEvent) {
 		if e == PowerSuspend {

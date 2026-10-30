@@ -1,0 +1,9 @@
+# Windows Server 2008 R2 compatibility candidate
+
+This is an experimental target, not a verified or published release. The normal Go/Fyne build requires Windows 10 or Server 2016 and later. The candidate targets Server 2008 R2 SP1 x64 using the XTLS/go-win7 patched Go 1.27.3 toolchain (release `patched-1.27.3`, SHA-256 of the Windows amd64 SDK ZIP `8f860c35535e575d073fb4ce0df401511cc8a10a2f6af3739e000eee995fae6e`) and llvm-mingw 20261020 MSVCRT (SDK ZIP SHA-256 `52a3e3f584a74c3cde8ceb0c6960549683178e03b36818cb02b7ed109a68ff67`). These are third-party build tools, not official upstream Go support. The patched Go project documents its own conditions, including Server 2008 R2 SP1 with Convenience Rollup; this installation's update level has not been verified.
+
+The legacy power-event implementation uses an invisible top-level window and WM_POWERBROADCAST when the newer power notification entry points are unavailable. The corresponding synthetic event, cleanup and race tests ran on a newer Windows host. Physical sleep and the target server have not been tested. Unexpected window/message-loop failure and compatibility with other Windows components require target validation.
+
+The candidate may still fail due to the target's update level, video/OpenGL drivers, missing APIs, third-party dependencies, or other operating-system differences. A successful build or PE version check is not a successful Windows Server 2008 R2 runtime or VPN test. It is unsigned. No actual user profile or VPN server is used without the owner's participation. The original unlicensed proxy is not included.
+
+See https://github.com/XTLS/go-win7/releases/tag/patched-1.27.3 and https://github.com/mstorsjo/llvm-mingw/releases/tag/20261020 for toolchain provenance. Go toolchain code and other included components retain their respective licenses; see THIRD_PARTY_NOTICES.md and third_party/licenses.

@@ -3,6 +3,7 @@
 package app
 
 import (
+	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -56,9 +57,15 @@ func nativePowerCallback(context, kind, setting uintptr) uintptr {
 
 func registerPowerEvents(callback func(PowerEvent)) (func() error, error) {
 	if err := powerRegister.Find(); err != nil {
+		if errors.Is(err, windows.ERROR_PROC_NOT_FOUND) {
+			return registerLegacyPowerEvents(callback)
+		}
 		return nil, err
 	}
 	if err := powerUnregister.Find(); err != nil {
+		if errors.Is(err, windows.ERROR_PROC_NOT_FOUND) {
+			return registerLegacyPowerEvents(callback)
+		}
 		return nil, err
 	}
 	r := &nativePowerRegistration{callback: callback, id: powerID.Add(1)}
