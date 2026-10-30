@@ -95,6 +95,24 @@ func main() {
 		core = managed
 	}
 	defer core.Close()
+	if managed != nil {
+		power, powerErr := application.WatchPowerEvents(func(event application.PowerEvent) {
+			switch event {
+			case application.PowerSuspend:
+				_, _ = managed.Suspend()
+			case application.PowerResume:
+				_, _ = managed.Resume()
+			}
+		})
+		if powerErr != nil {
+			w := a.NewWindow("Ошибка")
+			dialog.ShowInformation("Управление питанием недоступно", "Не удалось зарегистрировать обработку сна и возобновления. Подключение не запускается.", w)
+			w.ShowAndRun()
+			return
+		}
+		// Stop native event delivery before the controller is closed on exit.
+		defer power.Close()
+	}
 	w := ui.New(a, core, managed, store, storageErr)
 	instance.Watch(func() { fyne.Do(func() { w.Show(); w.RequestFocus() }) })
 	w.ShowAndRun()

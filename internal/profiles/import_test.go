@@ -1,6 +1,7 @@
 package profiles
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -154,6 +155,54 @@ func TestImportRejectsPinnedWindowsBufferOverflow(t *testing.T) {
 	for _, fields := range []string{"MTU = 1984\nS4 = 0", "S4 = 564", "S1 = 1868\nS2 = 1924\nS3 = 1952", "Jc = 128\nJmin = 1\nJmax = 2016"} {
 		if err := ValidateImport(withFields(fields)); err != nil {
 			t.Fatalf("safe boundary rejected: %v", err)
+		}
+	}
+}
+
+func TestImportAWG31FieldsAndRanges(t *testing.T) {
+	withFields := func(fields string) []byte {
+		return []byte(strings.Replace(syntheticConfig(), "[Peer]", fields+"\n[Peer]", 1))
+	}
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	header := "HeaderProtectionKey = " + key + "\nS1 = 12\nS2 = 16\nS3 = 20\nS4 = 24"
+	for _, fields := range []string{
+		header,
+		header + "\nContentPaddingAddition = 540",
+		header + "\nContentPaddingAddition = 8-16\nRekeyAfterTime = 120-121\nRekeyTimeout = 5-6\nRejectAfterTime = 180-181\nKeepaliveTimeout = 10-11\nMaxHandshakeAttempts = 4-5\nRandomTrailers = true\nDisableCookies = true",
+		"ContentPaddingAddition = 0-564\nRekeyAfterTime = 0\nRekeyTimeout = 1-4294967295\nRandomTrailers = 1\nDisableCookies = FALSE",
+		"RejectAfterTime = 1-3074457345\nMaxHandshakeAttempts = 1-4294967293",
+	} {
+		stored, err := ClientConfigForStorage(withFields(fields))
+		if err != nil || !strings.Contains(string(stored), fields) {
+			t.Fatal("supported AWG3.1 parameters changed or rejected")
+		}
+		clear(stored)
+	}
+	for _, fields := range []string{
+		"HeaderProtectionKey = " + key,
+		strings.Replace(header, "S3 = 20", "S3 = 11", 1),
+		strings.Replace(header, key, base64.StdEncoding.EncodeToString(make([]byte, 32)), 1),
+		strings.Replace(header, key, "SYNTHETIC_SECRET", 1),
+		header + "\nContentPaddingAddition = 541",
+		"ContentPaddingAddition = 565", "ContentPaddingAddition = 2017", "ContentPaddingAddition = 2-1",
+		"ContentPaddingAddition = 0-4294967295", "ContentPaddingAddition = 1 - 2",
+		"RekeyAfterTime = 0-1", "RekeyTimeout = -1", "RejectAfterTime = 2-1",
+		"KeepaliveTimeout = 4294967296", "MaxHandshakeAttempts = 0-4294967295",
+		"RejectAfterTime = 3074457346", "MaxHandshakeAttempts = 4294967294",
+		"RandomTrailers = SYNTHETIC_SECRET", "DisableCookies = yes", "header_protection_key = " + key,
+	} {
+		if ValidateImport(withFields(fields)) == nil {
+			t.Fatal("unsafe or unsupported AWG3.1 parameter accepted")
+		}
+	}
+	for _, value := range []string{"0", "0-0", "20-21", "1-4294967295", "4294967295"} {
+		if err := ValidateImport([]byte(syntheticConfig() + "PersistentKeepalive = " + value + "\n")); err != nil {
+			t.Fatal("supported keepalive range rejected")
+		}
+	}
+	for _, value := range []string{"0-1", "2-1", "4294967296", "0-4294967295", "SYNTHETIC_SECRET"} {
+		if ValidateImport([]byte(syntheticConfig()+"PersistentKeepalive = "+value+"\n")) == nil {
+			t.Fatal("unsafe keepalive range accepted")
 		}
 	}
 }

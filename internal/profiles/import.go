@@ -28,7 +28,7 @@ func ValidateImport(input []byte) error {
 	sections := map[string]bool{}
 	fields := map[string]string{}
 	allowed := map[string]map[string]bool{
-		"interface": {"privatekey": true, "address": true, "dns": true, "mtu": true, "jc": true, "jmin": true, "jmax": true, "s1": true, "s2": true, "s3": true, "s4": true, "h1": true, "h2": true, "h3": true, "h4": true, "i1": true, "i2": true, "i3": true, "i4": true, "i5": true},
+		"interface": {"privatekey": true, "address": true, "dns": true, "mtu": true, "jc": true, "jmin": true, "jmax": true, "s1": true, "s2": true, "s3": true, "s4": true, "h1": true, "h2": true, "h3": true, "h4": true, "i1": true, "i2": true, "i3": true, "i4": true, "i5": true, "headerprotectionkey": true, "contentpaddingaddition": true, "rekeyaftertime": true, "rekeytimeout": true, "rejectaftertime": true, "keepalivetimeout": true, "maxhandshakeattempts": true, "randomtrailers": true, "disablecookies": true},
 		"peer":      {"publickey": true, "presharedkey": true, "endpoint": true, "allowedips": true, "persistentkeepalive": true},
 	}
 	for _, line := range strings.Split(text, "\n") {
@@ -73,6 +73,24 @@ func ValidateImport(input []byte) error {
 				if !validHeaderRange(value) {
 					return bad()
 				}
+			case "contentpaddingaddition":
+				if _, _, ok := parseUint32Range(value); !ok {
+					return bad()
+				}
+			case "rekeyaftertime", "rekeytimeout", "rejectaftertime", "keepalivetimeout", "maxhandshakeattempts":
+				if !validTimingRange(value) {
+					return bad()
+				}
+				_, hi, _ := parseUint32Range(value)
+				// Engine expiry multiplies this duration by three; handshake
+				// counters add two. Reject arithmetic overflow before IPC.
+				if key == "rejectaftertime" && hi > 3074457345 || key == "maxhandshakeattempts" && hi > 4294967293 {
+					return bad()
+				}
+			case "randomtrailers", "disablecookies":
+				if _, err := strconv.ParseBool(value); err != nil {
+					return bad()
+				}
 			}
 		}
 		name := section + "." + key
@@ -93,6 +111,23 @@ func ValidateImport(input []byte) error {
 				return bad()
 			}
 			clear(b)
+		}
+	}
+	if value := fields["interface.headerprotectionkey"]; value != "" {
+		b, err := base64.StdEncoding.Strict().DecodeString(value)
+		nonzero := false
+		for _, v := range b {
+			nonzero = nonzero || v != 0
+		}
+		clear(b)
+		if err != nil || len(b) != 32 || !nonzero {
+			return bad()
+		}
+		for _, name := range []string{"s1", "s2", "s3", "s4"} {
+			n, _ := strconv.ParseUint(fields["interface."+name], 10, 16)
+			if n < 12 {
+				return bad()
+			}
 		}
 	}
 	for _, name := range []string{"interface.address", "peer.allowedips"} {
@@ -137,6 +172,12 @@ func ValidateImport(input []byte) error {
 	if number("s1")+148 > 2016 || number("s2")+92 > 2016 || number("s3")+64 > 2016 || uint64(mtu)+number("s4")+32 > 2016 {
 		return bad()
 	}
+	if value := fields["interface.contentpaddingaddition"]; value != "" {
+		_, hi, ok := parseUint32Range(value)
+		if !ok || hi > 2016 || uint64(mtu)+number("s4")+32+uint64(hi) > 2016 {
+			return bad()
+		}
+	}
 	jc, jmin, jmax := number("jc"), number("jmin"), number("jmax")
 	if jc > 128 || jmin > 2016 || jmax > 2016 || jmin > jmax {
 		return bad()
@@ -145,8 +186,7 @@ func ValidateImport(input []byte) error {
 		return bad()
 	}
 	if value := fields["peer.persistentkeepalive"]; value != "" {
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 || n > 65535 {
+		if !validTimingRange(value) {
 			return bad()
 		}
 	}
@@ -265,26 +305,36 @@ func decimalDigits(value string) bool {
 }
 
 func validHeaderRange(value string) bool {
+	_, _, ok := parseUint32Range(value)
+	return ok
+}
+
+func validTimingRange(value string) bool {
+	lo, hi, ok := parseUint32Range(value)
+	return ok && (lo >= 1 || hi == 0)
+}
+
+func parseUint32Range(value string) (uint32, uint32, bool) {
 	parts := strings.Split(value, "-")
 	if len(parts) < 1 || len(parts) > 2 {
-		return false
+		return 0, 0, false
 	}
 	var numbers [2]uint64
 	for i, part := range parts {
 		if !decimalDigits(part) {
-			return false
+			return 0, 0, false
 		}
 		n, err := strconv.ParseUint(part, 10, 32)
 		if err != nil {
-			return false
+			return 0, 0, false
 		}
 		numbers[i] = n
 	}
 	if len(parts) == 1 {
-		return true
+		return uint32(numbers[0]), uint32(numbers[0]), true
 	}
 	// A full uint32 range overflows the pinned engine's range-length arithmetic.
-	return numbers[0] <= numbers[1] && !(numbers[0] == 0 && numbers[1] == 1<<32-1)
+	return uint32(numbers[0]), uint32(numbers[1]), numbers[0] <= numbers[1] && !(numbers[0] == 0 && numbers[1] == 1<<32-1)
 }
 
 // ClientConfigForStorage omits comments, which may contain unrelated secrets.

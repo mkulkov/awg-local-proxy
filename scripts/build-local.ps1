@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $CoreSource,
-    [string] $GoExe = 'go'
+    [string] $GoExe = 'go',
+    [switch] $IncludeSBOM
 )
 
 Set-StrictMode -Version Latest
@@ -20,6 +21,12 @@ if ($LASTEXITCODE -ne 0 -or $sourceCommit -ne $lock.source_commit) {
 $sourceChanges = @(& git -C $core status --porcelain)
 if ($LASTEXITCODE -ne 0 -or $sourceChanges.Count -ne 0) {
     throw 'Core source must be a clean checkout of the pinned commit.'
+}
+if ($IncludeSBOM) {
+    $productChanges = @(& git -C $product status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $productChanges.Count -ne 0) {
+        throw 'Release SBOM requires a clean product checkout.'
+    }
 }
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $destination = Join-Path $product ('dist\local-' + $stamp)
@@ -49,6 +56,7 @@ $guiHash = (Get-FileHash -LiteralPath $guiExe -Algorithm SHA256).Hash.ToLowerInv
     Set-Content -LiteralPath (Join-Path $destination 'SHA256SUMS') -Encoding ascii
 Copy-Item -LiteralPath (Join-Path $product 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $product 'QUICKSTART.md') -Destination $destination
+Copy-Item -LiteralPath (Join-Path $product 'LICENSE') -Destination $destination
 $lock.binary_sha256 = $coreHash
 $lock.build_toolchain = (& $GoExe version).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Could not record the Go toolchain version.' }
@@ -61,6 +69,21 @@ foreach ($name in @('CORE_SELECTION.md', 'LICENSE_AUDIT.md', 'IMPLEMENTATION.md'
 }
 [void][IO.Directory]::CreateDirectory((Join-Path $destination 'third_party'))
 Copy-Item -LiteralPath (Join-Path $product 'third_party\licenses') -Destination (Join-Path $destination 'third_party\licenses') -Recurse
+if ($IncludeSBOM) {
+    $sbomDir = Join-Path $destination 'sbom'
+    [void][IO.Directory]::CreateDirectory($sbomDir)
+    $generator = 'github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0'
+    Push-Location $product
+    try {
+        & $GoExe run $generator app -json -noserial -notimestamp -main ./cmd/awg-local-proxy -output (Join-Path $sbomDir 'gui.cdx.json') .
+        if ($LASTEXITCODE -ne 0) { throw 'GUI SBOM generation failed.' }
+    } finally { Pop-Location }
+    Push-Location $core
+    try {
+        & $GoExe run $generator app -json -noserial -notimestamp -main ./cmd/awg-proxy-core -output (Join-Path $sbomDir 'core.cdx.json') .
+        if ($LASTEXITCODE -ne 0) { throw 'Core SBOM generation failed.' }
+    } finally { Pop-Location }
+}
 $zip = "$destination.zip"
 Compress-Archive -Path (Join-Path $destination '*') -DestinationPath $zip -CompressionLevel Optimal
 Write-Host "Local build: $destination"

@@ -39,6 +39,9 @@ type Controller struct {
 	status                   coreclient.Status
 	generation               uint64
 	desired, running, closed bool
+	suspended                bool
+	resumeWanted             bool
+	resumeSelection          Selection
 	cancel                   context.CancelFunc
 	done                     chan struct{}
 	wait                     func(context.Context, time.Duration) error
@@ -90,6 +93,12 @@ func (c *Controller) Start(selection Selection) (coreclient.Status, error) {
 		c.mu.Unlock()
 		return coreclient.Status{}, errors.New("session is closed")
 	}
+	if c.suspended {
+		status := c.status
+		c.mu.Unlock()
+		return status, errors.New("session is suspended")
+	}
+	c.resumeWanted = false
 	idle := !c.desired && !c.running && c.status.State == coreclient.Stopped
 	c.mu.Unlock()
 	if !idle {
@@ -290,6 +299,9 @@ func (c *Controller) stop() error {
 func (c *Controller) Disconnect(context.Context) (coreclient.Status, error) {
 	c.commands.Lock()
 	defer c.commands.Unlock()
+	c.mu.Lock()
+	c.resumeWanted = false
+	c.mu.Unlock()
 	err := c.stop()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -300,8 +312,68 @@ func (c *Controller) Close() error {
 	defer c.commands.Unlock()
 	c.mu.Lock()
 	c.closed = true
+	c.resumeWanted = false
 	c.mu.Unlock()
 	return c.stop()
+}
+
+// Suspend stops the owned process and cancels attempts/backoff. Recovery is
+// retained only for an already desired session whose user opted into reconnect.
+// Native power callbacks call this on a worker, never on the Windows callback.
+func (c *Controller) Suspend() (coreclient.Status, error) {
+	c.commands.Lock()
+	defer c.commands.Unlock()
+	c.mu.Lock()
+	if c.closed || c.suspended {
+		status := c.status
+		c.mu.Unlock()
+		return status, nil
+	}
+	wanted := c.desired && c.selection.Reconnect
+	selection := c.selection
+	c.suspended = true
+	c.resumeWanted = false
+	c.mu.Unlock()
+	err := c.stop()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err == nil && wanted && !c.closed {
+		c.resumeWanted = true
+		c.resumeSelection = selection
+		c.status = coreclient.Status{State: coreclient.Reconnecting, Message: "Сеанс приостановлен до выхода из сна."}
+	}
+	return c.status, err
+}
+
+// Resume consumes a single suspend intent. Duplicate or unsolicited resume
+// events cannot start a process, and Disconnect/Close invalidate the intent.
+func (c *Controller) Resume() (coreclient.Status, error) {
+	c.commands.Lock()
+	defer c.commands.Unlock()
+	c.mu.Lock()
+	if !c.suspended {
+		status := c.status
+		c.mu.Unlock()
+		return status, nil
+	}
+	c.suspended = false
+	wanted, selection := c.resumeWanted && !c.closed, c.resumeSelection
+	c.resumeWanted = false
+	c.resumeSelection = Selection{}
+	status := c.status
+	c.mu.Unlock()
+	if !wanted {
+		return status, nil
+	}
+	// Suspend records recovery only after confirmed child shutdown. Keep this
+	// check defensive: never launch while an owned process is still uncertain.
+	c.mu.Lock()
+	unsafe := c.backend != nil || c.running
+	c.mu.Unlock()
+	if unsafe {
+		return status, errors.New("suspended core shutdown was not confirmed")
+	}
+	return c.launch(selection, true), nil
 }
 func (c *Controller) Connect(context.Context) (coreclient.Status, error) {
 	return coreclient.Status{}, errors.New("select a profile before connecting")

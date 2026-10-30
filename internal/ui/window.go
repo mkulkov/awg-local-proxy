@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -403,15 +404,15 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 			}
 		}, w)
 	})
-	profileInfo := widget.NewLabel("Можно сохранить demo-профиль или ограниченный клиентский .conf в DPAPI. Импорт не запускает VPN. Один Peer, поддерживаемые параметры J/S/H/I. Неизвестные поля и .vpn не поддержаны.")
+	profileInfo := widget.NewLabel("Можно сохранить demo-профиль или клиентский .conf/.vpn в DPAPI. Импорт не запускает VPN. Поддерживается один Peer; неизвестные параметры отклоняются.")
 	if real != nil {
-		profileInfo.SetText("Импортируйте клиентский .conf размером до 8 КиБ. Секрет будет зашифрован для текущего пользователя; исходный файл останется на месте. Поддерживается ограниченный набор полей и один Peer. Имя VPN-сервера при подключении разрешается системным DNS; используйте IP-адрес, чтобы исключить этот запрос.")
+		profileInfo.SetText("Импортируйте клиентский .conf или экспорт .vpn. Секрет будет зашифрован для текущего пользователя; исходный файл останется на месте. Поддерживается один Peer. Имя VPN-сервера при подключении разрешается системным DNS; используйте IP-адрес, чтобы исключить этот запрос.")
 		create.Hide()
 		name.Hide()
 	}
 	profileInfo.Wrapping = fyne.TextWrapWord
 	var importButton *widget.Button
-	importButton = widget.NewButton("Импортировать .conf в DPAPI (без подключения)", func() {
+	importButton = widget.NewButton("Импортировать .conf или .vpn (без подключения)", func() {
 		if store == nil {
 			return
 		}
@@ -424,44 +425,54 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 				return
 			}
 			filename := reader.URI().Name()
-			if filepath.Ext(filename) != ".conf" {
+			ext := strings.ToLower(filepath.Ext(filename))
+			if ext != ".conf" && ext != ".vpn" {
 				reader.Close()
-				dialog.ShowInformation("Импорт", "Поддерживается только клиентский .conf.", w)
+				dialog.ShowInformation("Импорт", "Выберите клиентский .conf или экспорт .vpn.", w)
 				return
 			}
 			importButton.Disable()
 			go func() {
 				defer reader.Close()
 				userError := "Не удалось прочитать или зашифровать файл. Профиль не сохранён."
-				data, err := io.ReadAll(io.LimitReader(reader, profiles.MaxImportBytes+1))
+				data, err := io.ReadAll(io.LimitReader(reader, profiles.MaxVPNInputBytes+1))
 				defer clear(data)
-				if err == nil && len(data) > profiles.MaxImportBytes {
-					err = errors.New("файл превышает 8 КиБ")
+				if err == nil && len(data) > profiles.MaxVPNInputBytes {
+					err = errors.New("файл превышает 64 КиБ")
 					userError = err.Error()
 				}
+				discardedMetadata := false
 				if err == nil {
-					var client []byte
-					client, err = profiles.ClientConfigForStorage(data)
+					var result profiles.ImportResult
+					result, err = profiles.ImportClientConfig(data)
 					if err != nil {
 						userError = err.Error()
 					}
-					defer clear(client)
+					defer clear(result.Config)
+					discardedMetadata = result.DiscardedMetadata
 					if err == nil {
-						_, err = store.CreateEncrypted(filename, client)
+						_, err = store.CreateEncrypted(filename, result.Config)
 					}
 				}
 				fyne.Do(func() {
+					if quitting {
+						return
+					}
 					importButton.Enable()
 					if err != nil {
 						dialog.ShowInformation("Импорт не выполнен", userError, w)
 					} else {
 						refreshProfiles()
-						dialog.ShowInformation("Профиль сохранён", "Конфигурация зашифрована DPAPI. VPN не подключён; проверка совместимости с ядром ещё не выполнялась.", w)
+						message := "Клиентская конфигурация зашифрована DPAPI. Исходный файл сохранён. VPN не подключён."
+						if discardedMetadata {
+							message += " Из экспорта сохранён только клиентский профиль; прочие данные, включая возможные административные, не сохранены."
+						}
+						dialog.ShowInformation("Профиль сохранён", message, w)
 					}
 				})
 			}()
 		}, w)
-		d.SetFilter(storage.NewExtensionFileFilter([]string{".conf"}))
+		d.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".CONF", ".VPN"}))
 		d.Show()
 	})
 	deleteButton := widget.NewButton("Удалить выбранный сохранённый профиль", func() {
