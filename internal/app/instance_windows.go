@@ -22,7 +22,12 @@ func AcquireInstance() (*Instance, bool, error) {
 }
 
 func acquireInstance(prefix string) (*Instance, bool, error) {
-	u, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		return nil, false, err
+	}
+	defer token.Close()
+	u, err := token.GetTokenUser()
 	if err != nil {
 		return nil, false, err
 	}

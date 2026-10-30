@@ -34,7 +34,12 @@ func TestNativeDPAPIAndProtectedCurrentUserDACL(t *testing.T) {
 	if bytes.Contains(b, []byte("SYNTHETIC_PRIVATE_TOKEN")) {
 		t.Fatal("native plaintext persisted")
 	}
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+	user, err := token.GetTokenUser()
 	if err != nil {
 		t.Fatal(err)
 	}

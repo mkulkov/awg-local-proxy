@@ -51,7 +51,12 @@ func (DPAPI) Protect(b []byte) ([]byte, error)   { return crypt(b, false) }
 func (DPAPI) Unprotect(b []byte) ([]byte, error) { return crypt(b, true) }
 
 func restrict(path string) error {
-	u, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		return err
+	}
+	defer token.Close()
+	u, err := token.GetTokenUser()
 	if err != nil {
 		return err
 	}

@@ -38,6 +38,7 @@ func main() {
 	instance, existing, err := application.AcquireInstance()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cannot establish application instance")
+		showStartupError("Не удалось запустить приложение: невозможно проверить учётную запись или создать объект запуска. Подключение не выполнялось.")
 		return
 	}
 	if existing {
@@ -48,6 +49,7 @@ func main() {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "executable unavailable")
+		showStartupError("Не удалось определить расположение приложения. Подключение не выполнялось.")
 		return
 	}
 	var core coreclient.Client

@@ -14,7 +14,12 @@ func reparse(path string) bool {
 }
 
 func restrict(path string) error {
-	u, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		return err
+	}
+	defer token.Close()
+	u, err := token.GetTokenUser()
 	if err != nil {
 		return err
 	}
