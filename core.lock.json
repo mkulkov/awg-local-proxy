@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/mkulkov/amnezia-proxy",
+  "upstream": "https://github.com/synacker/amnezia-proxy",
+  "source_commit": "f5a7912dba8b128ae5c1a3f68a06be7c1668b908",
+  "ipc_protocol_version": 1,
+  "awg_module": "github.com/amnezia-vpn/amneziawg-go/v3",
+  "awg_module_version": "v3.1.20260828",
+  "license_status": "blocked",
+  "binary": null,
+  "binary_sha256": null,
+  "build_toolchain": null,
+  "reason": "No explicit upstream license found. No real core is built, downloaded or distributed."
+}

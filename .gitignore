@@ -25,3 +25,4 @@ go.work.sum
 coverage.out
 # Add individually reviewed, non-secret fixtures using exact exceptions.
 # Never whitelist a whole directory containing real VPN profiles.
+/artifacts/
