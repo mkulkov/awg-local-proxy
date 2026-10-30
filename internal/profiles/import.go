@@ -15,7 +15,7 @@ const MaxImportBytes = 8 * 1024
 
 // ValidateImport is a conservative original client-only storage filter. It does
 // not assert cryptographic validity or engine compatibility and never executes a
-// hook. Configurations remain sealed and are not sent to a core in this demo.
+// hook. Import itself never resolves endpoints or starts a core connection.
 func ValidateImport(input []byte) error {
 	bad := func() error {
 		return errors.New("конфигурация не входит в поддерживаемый безопасный поднабор .conf; файл не сохранён")
@@ -109,15 +109,18 @@ func ValidateImport(input []byte) error {
 			}
 		}
 	}
-	host, port, err := net.SplitHostPort(fields["peer.endpoint"])
-	if err != nil {
+	endpoint := fields["peer.endpoint"]
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil || host == "" || len(host) > 253 {
 		return bad()
 	}
 	if _, err := netip.ParseAddr(host); err != nil {
-		return errors.New("демонстрационный импорт принимает только числовой IP Endpoint; имя сервера не сохранено")
+		if strings.HasPrefix(endpoint, "[") || !validEndpointHostname(host) {
+			return errors.New("Endpoint должен содержать числовой IP или ASCII-имя DNS; Unicode IDN и специальные символы не поддерживаются")
+		}
 	}
 	n, err := strconv.Atoi(port)
-	if err != nil || n < 1 || n > 65535 {
+	if err != nil || !decimalDigits(port) || len(port) > 5 || n < 1 || n > 65535 {
 		return bad()
 	}
 	mtu := 1420
@@ -148,6 +151,26 @@ func ValidateImport(input []byte) error {
 		}
 	}
 	return nil
+}
+
+// Endpoint bootstrap is the core's only permitted system-resolver exception.
+// Import only checks syntax and never resolves the name or contacts a server.
+// ASCII punycode labels are preserved as supplied; no IDN conversion is done.
+func validEndpointHostname(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range []byte(label) {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Grammar and bounds match the pinned amneziawg-go/v3 v3.1.20260828 engine,

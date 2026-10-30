@@ -1,8 +1,12 @@
 package profiles
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
+	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -16,7 +20,6 @@ func TestImportRejectsUnsafeOrAmbiguousConfig(t *testing.T) {
 		strings.Replace(syntheticConfig(), "[Peer]", "PostUp = run.exe\n[Peer]", 1),
 		strings.Replace(syntheticConfig(), "[Peer]", "UnknownSecret = test\n[Peer]", 1),
 		strings.Replace(syntheticConfig(), "[Peer]", "PrivateKey = duplicate\n[Peer]", 1),
-		strings.Replace(syntheticConfig(), "192.0.2.1:51820", "example.com:51820", 1),
 		strings.Replace(syntheticConfig(), "[Peer]", "Jc = 4 # SYNTHETIC_ADMIN_SECRET\n[Peer]", 1),
 		strings.Replace(syntheticConfig(), "[Peer]", "Jc = SSH_PASSWORD\n[Peer]", 1),
 		strings.Replace(syntheticConfig(), "[Peer]", "S1 = SSH_PASSWORD\n[Peer]", 1),
@@ -31,6 +34,73 @@ func TestImportRejectsUnsafeOrAmbiguousConfig(t *testing.T) {
 	}
 	if err := ValidateImport([]byte(syntheticConfig())); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestImportEndpointAddressesAndHostnames(t *testing.T) {
+	for _, endpoint := range []string{
+		"192.0.2.1:51820", "[2001:db8::1]:51820", "vpn.example:51820",
+		"VPN-1.example.invalid:1", "localhost:65535", "xn--e1afmkfd.example:51820",
+		strings.Repeat("a", 63) + ".example:51820",
+		strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61) + ":51820",
+	} {
+		input := []byte(strings.Replace(syntheticConfig(), "192.0.2.1:51820", endpoint, 1))
+		stored, err := ClientConfigForStorage(input)
+		if err != nil {
+			t.Fatalf("supported endpoint rejected: %v", err)
+		}
+		if !strings.Contains(string(stored), "Endpoint = "+endpoint+"\n") {
+			t.Fatal("endpoint was changed during import")
+		}
+	}
+}
+
+func TestImportRejectsMalformedEndpointsWithoutEchoingThem(t *testing.T) {
+	for _, endpoint := range []string{
+		":51820", "vpn.example:", "vpn.example:0", "vpn.example:65536", "vpn.example:+80",
+		"vpn.example:-1", "vpn.example:80/path", "vpn.example:000080", "2001:db8::1:51820",
+		"vpn..example:51820", ".vpn.example:51820", "vpn.example.:51820",
+		"-vpn.example:51820", "vpn-.example:51820", "vpn_1.example:51820",
+		"vpn.example :51820", "vpn.exa\tmple:51820", "vpn.example:\t51820",
+		"https://vpn.example:51820", "user@vpn.example:51820", "vpn/example:51820",
+		"пример.example:51820", "vpn.例子:51820", "[vpn.example]:51820",
+		strings.Repeat("a", 64) + ".example:51820",
+		strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 62) + ":51820",
+	} {
+		input := []byte(strings.Replace(syntheticConfig(), "192.0.2.1:51820", endpoint, 1))
+		if err := ValidateImport(input); err == nil {
+			t.Errorf("unsupported endpoint accepted: %q", endpoint)
+		} else if strings.Contains(err.Error(), endpoint) {
+			t.Fatal("endpoint reflected in import error")
+		}
+	}
+}
+
+func TestImportHostnameDoesNotResolve(t *testing.T) {
+	previous := net.DefaultResolver
+	var calls atomic.Int32
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		calls.Add(1)
+		return nil, errors.New("network forbidden by import test")
+	}}
+	t.Cleanup(func() { net.DefaultResolver = previous })
+	input := []byte(strings.Replace(syntheticConfig(), "192.0.2.1:51820", "not-resolved.example.invalid:51820", 1))
+	if err := ValidateImport(input); err != nil {
+		t.Fatal("offline hostname validation failed")
+	}
+	if calls.Load() != 0 {
+		t.Fatal("import attempted DNS resolution")
+	}
+}
+
+func TestImportEndpointPreservesWindowsINIWhitespaceCompatibility(t *testing.T) {
+	for _, endpoint := range []string{"192.0.2.1:51820", "[2001:db8::1]:51820", "vpn.example.invalid:51820"} {
+		input := strings.Replace(syntheticConfig(), "192.0.2.1:51820", "\t "+endpoint+" \t ", 1)
+		input = strings.ReplaceAll(input, "\n", "\r\n")
+		stored, err := ClientConfigForStorage([]byte(input))
+		if err != nil || !strings.Contains(string(stored), endpoint) {
+			t.Fatal("Windows line endings or outer INI whitespace prevented endpoint import")
+		}
 	}
 }
 
