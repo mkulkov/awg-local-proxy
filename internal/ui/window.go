@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,6 +19,42 @@ import (
 	"github.com/mkulkov/awg-local-proxy/internal/coreclient"
 	"github.com/mkulkov/awg-local-proxy/internal/profiles"
 )
+
+// localAddress accepts only a decimal TCP port and always constructs IPv4
+// loopback; no user-supplied bind host can reach the core.
+func localAddress(port string) (string, error) {
+	if len(port) == 0 || len(port) > 5 {
+		return "", errors.New("укажите порт от 1 до 65535")
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return "", errors.New("укажите порт от 1 до 65535")
+		}
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", errors.New("укажите порт от 1 до 65535")
+	}
+	return "127.0.0.1:" + strconv.Itoa(n), nil
+}
+
+func localAddresses(socksPort, httpPort string, httpEnabled bool) (string, string, error) {
+	socks, err := localAddress(socksPort)
+	if err != nil {
+		return "", "", errors.New("порт SOCKS5 должен быть от 1 до 65535")
+	}
+	if !httpEnabled {
+		return socks, "", nil
+	}
+	http, err := localAddress(httpPort)
+	if err != nil {
+		return "", "", errors.New("порт HTTP должен быть от 1 до 65535")
+	}
+	if socks == http {
+		return "", "", errors.New("порты SOCKS5 и HTTP должны различаться")
+	}
+	return socks, http, nil
+}
 
 func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, store *profiles.Store, storageError error) fyne.Window {
 	title := appTitle
@@ -38,7 +75,11 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	profile.SetSelectedIndex(0)
 	probe := widget.NewEntry()
 	probe.SetPlaceHolder("https://адрес-проверки/")
-	httpEnabled := widget.NewCheck("Включить HTTP proxy на 127.0.0.1:8080", nil)
+	httpEnabled := widget.NewCheck("Включить HTTP proxy", nil)
+	socksPort := widget.NewEntry()
+	socksPort.SetText("1080")
+	httpPort := widget.NewEntry()
+	httpPort.SetText("8080")
 	var loaded []profiles.Metadata
 	refreshProfiles := func() {
 		if store == nil {
@@ -62,6 +103,24 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	busy := false
 	uiDone := make(chan struct{})
 	var checkTunnel *widget.Button
+	var socksCopy, httpCopy *widget.Button
+	setPortControls := func(enabled bool) {
+		if enabled {
+			socksPort.Enable()
+			httpPort.Enable()
+		} else {
+			socksPort.Disable()
+			httpPort.Disable()
+		}
+	}
+	disableAddressCopies := func() {
+		if socksCopy != nil {
+			socksCopy.Disable()
+		}
+		if httpCopy != nil {
+			httpCopy.Disable()
+		}
+	}
 	startLabel, stopLabel := connectLabel, disconnectLabel
 	if real != nil {
 		startLabel, stopLabel = "Подключить", "Отключить"
@@ -73,6 +132,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 		}
 		profileID := ""
 		probeURL := ""
+		socksAddress := ""
 		httpAddress := ""
 		if real != nil && connect {
 			i := profile.SelectedIndex() - 1
@@ -85,8 +145,11 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 				return
 			}
 			profileID, probeURL = loaded[i].ID, probe.Text
-			if httpEnabled.Checked {
-				httpAddress = "127.0.0.1:8080"
+			var err error
+			socksAddress, httpAddress, err = localAddresses(socksPort.Text, httpPort.Text, httpEnabled.Checked)
+			if err != nil {
+				dialog.ShowInformation("Порты proxy", err.Error(), w)
+				return
 			}
 		}
 		primary.Disable()
@@ -97,6 +160,8 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 		profile.Disable()
 		probe.Disable()
 		httpEnabled.Disable()
+		setPortControls(false)
+		disableAddressCopies()
 		status.SetText("Подключение…")
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -107,7 +172,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 				var secret []byte
 				secret, err = store.ReadSecret(profileID)
 				if err == nil {
-					s, err = real.ConnectProfile(ctx, coreclient.ConnectRequest{Config: secret, SocksAddress: "127.0.0.1:1080", HTTPAddress: httpAddress, ProbeURL: probeURL, TimeoutSeconds: 15})
+					s, err = real.ConnectProfile(ctx, coreclient.ConnectRequest{Config: secret, SocksAddress: socksAddress, HTTPAddress: httpAddress, ProbeURL: probeURL, TimeoutSeconds: 15})
 				}
 				clear(secret)
 			} else if connect {
@@ -122,6 +187,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 					profile.Enable()
 					probe.Enable()
 					httpEnabled.Enable()
+					setPortControls(true)
 				}
 				if err != nil {
 					active = false
@@ -142,6 +208,12 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 					}
 					if checkTunnel != nil {
 						checkTunnel.Enable()
+					}
+					if real != nil && s.ListenerReady {
+						socksCopy.Enable()
+						if httpAddress != "" {
+							httpCopy.Enable()
+						}
 					}
 				} else {
 					primary.SetText(startLabel)
@@ -171,6 +243,29 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	if real != nil {
 		primary.SetText("Подключить")
 		detail.SetText("Выберите профиль и задайте адрес проверки туннеля.")
+		liveAddress := func(label string, port *widget.Entry) (fyne.CanvasObject, *widget.Button) {
+			display := widget.NewLabel("")
+			update := func(value string) {
+				a, err := localAddress(value)
+				if err != nil {
+					display.SetText("Неверный порт")
+				} else {
+					display.SetText(a)
+				}
+			}
+			update(port.Text)
+			port.OnChanged = update
+			copy := widget.NewButtonWithIcon("Копировать", theme.ContentCopyIcon(), func() {
+				if a, err := localAddress(port.Text); err == nil {
+					w.Clipboard().SetContent(a)
+				}
+			})
+			copy.Disable()
+			return container.NewBorder(nil, nil, widget.NewLabel(label), copy, display), copy
+		}
+		var socksRow, httpRow fyne.CanvasObject
+		socksRow, socksCopy = liveAddress("SOCKS5", socksPort)
+		httpRow, httpCopy = liveAddress("HTTP (по выбору)", httpPort)
 		checkTunnel = widget.NewButton("Проверить туннель ещё раз", func() {
 			if !active || busy {
 				return
@@ -196,6 +291,8 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 							profile.Enable()
 							probe.Enable()
 							httpEnabled.Enable()
+							setPortControls(true)
+							disableAddressCopies()
 						}
 						return
 					}
@@ -204,7 +301,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 			}()
 		})
 		checkTunnel.Disable()
-		connection = container.NewVBox(widget.NewLabel("Профиль"), profile, widget.NewLabel("Адрес проверки через туннель"), probe, httpEnabled, status, primary, checkTunnel, detail, widget.NewSeparator(), address("SOCKS5", "127.0.0.1:1080"), address("HTTP (по выбору)", "127.0.0.1:8080"), widget.NewLabel("Прокси работает только при активном подключении. UDP не поддерживается."))
+		connection = container.NewVBox(widget.NewLabel("Профиль"), profile, widget.NewLabel("Адрес проверки через туннель"), probe, httpEnabled, status, primary, checkTunnel, detail, widget.NewSeparator(), socksRow, httpRow, widget.NewLabel("Порты меняются в настройках. Прокси работает только при активном подключении. UDP не поддерживается."))
 	}
 	name := widget.NewEntry()
 	name.SetPlaceHolder("Название демонстрационного профиля")
@@ -341,12 +438,18 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	about := widget.NewLabel("AWG Local Proxy · версия 0.1.0-demo\nGo + Fyne v2.8.2\n\nНезависимая оболочка. Код synacker/amnezia-proxy не включён.\nИнтеграция ядра заблокирована до разрешения лицензии.\n\nDPAPI CurrentUser защищает сохранённые секреты на диске, но не от программ с правами того же пользователя.")
 	about.Wrapping = fyne.TextWrapWord
 	if real != nil {
-		apps.ParseMarkdown("### Настройка приложений\nУкажите SOCKS5 `127.0.0.1:1080` в приложении и включите разрешение имён через прокси, если оно поддерживается. HTTP proxy включается отдельно.\n\n* **Браузер:** используйте отдельный профиль и настройки прокси.\n* **Telegram:** укажите SOCKS5 в настройках соединения.\n* **VS Code / Codex:** отдельные расширения и процессы могут игнорировать прокси.\n\nВыбор EXE не перехватывает трафик. UDP, QUIC, WebRTC и DNS самого приложения могут идти в обход.")
+		apps.ParseMarkdown("### Настройка приложений\nСкопируйте адрес SOCKS5 со вкладки подключения и включите разрешение имён через прокси, если оно поддерживается. HTTP proxy включается отдельно.\n\n* **Браузер:** используйте отдельный профиль и настройки прокси.\n* **Telegram:** укажите SOCKS5 в настройках соединения.\n* **VS Code / Codex:** отдельные расширения и процессы могут игнорировать прокси.\n\nВыбор EXE не перехватывает трафик. UDP, QUIC, WebRTC и DNS самого приложения могут идти в обход.")
 		settings.SetText("HTTP proxy включается на вкладке подключения.\n\nАвтозапуск и автоподключение отсутствуют. Системные маршруты, DNS, proxy и firewall не изменяются.")
 		diagnostics.SetText("Core: отдельный процесс AmneziaWG\nIPC: NDJSON v1, наследуемые stdin/stdout\nПодключение подтверждается handshake и запросом по заданному вами адресу.\nТелеметрия и загрузка core при запуске отсутствуют.")
 		about.SetText("AWG Local Proxy · предварительная версия\nGo + Fyne v2.8.2\n\nОфициальный движок AmneziaWG; код synacker/amnezia-proxy не включён.\n\nDPAPI не защищает секреты от программ с правами того же пользователя.")
 	}
-	tabs := container.NewAppTabs(container.NewTabItem("Подключение", container.NewVScroll(container.NewPadded(connection))), container.NewTabItem("Профили", container.NewVScroll(container.NewPadded(profilePage))), container.NewTabItem("Приложения", container.NewVScroll(apps)), container.NewTabItem("Настройки", container.NewPadded(settings)), container.NewTabItem("Диагностика", container.NewPadded(diagnostics)), container.NewTabItem("О программе", container.NewPadded(about)))
+	settingsPage := fyne.CanvasObject(settings)
+	if real != nil {
+		portHint := widget.NewLabel("Порты можно изменить только после отключения. После перезапуска они сбрасываются на 1080 и 8080.")
+		portHint.Wrapping = fyne.TextWrapWord
+		settingsPage = container.NewVBox(settings, widget.NewLabel("Порт SOCKS5 (127.0.0.1)"), socksPort, widget.NewLabel("Порт HTTP (127.0.0.1)"), httpPort, portHint)
+	}
+	tabs := container.NewAppTabs(container.NewTabItem("Подключение", container.NewVScroll(container.NewPadded(connection))), container.NewTabItem("Профили", container.NewVScroll(container.NewPadded(profilePage))), container.NewTabItem("Приложения", container.NewVScroll(apps)), container.NewTabItem("Настройки", container.NewVScroll(container.NewPadded(settingsPage))), container.NewTabItem("Диагностика", container.NewPadded(diagnostics)), container.NewTabItem("О программе", container.NewPadded(about)))
 	w.SetContent(tabs)
 	quitting := false
 	quit := func() {
@@ -413,6 +516,8 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 									profile.Enable()
 									probe.Enable()
 									httpEnabled.Enable()
+									setPortControls(true)
+									disableAddressCopies()
 									return
 								}
 								if s.State == coreclient.Degraded {
@@ -426,6 +531,8 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 									profile.Enable()
 									probe.Enable()
 									httpEnabled.Enable()
+									setPortControls(true)
+									disableAddressCopies()
 								}
 							})
 						}()

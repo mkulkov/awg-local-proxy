@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: mkulkov/awg-local-proxy-core
-          ref: 3b07ac9fbdbc5d97895b3a81136fe2865d8df48f
+          ref: 1592207a98f0c516e8f99eea49e169f4bcae692f
           path: .ci-core
           persist-credentials: false
       - name: Verify core pin and synthetic end-to-end tunnel

@@ -1,12 +1,14 @@
 # Real-core integration verification — 2026-10-30
 
-Windows amd64, Go 1.27.3, Fyne v2.8.2, LLVM MinGW 20261020. Independent core commit `3b07ac9fbdbc5d97895b3a81136fe2865d8df48f`; official AmneziaWG `v3.1.20260828` commit `b5928efb6ca19f0153958460c3d141f04abc5c2e`. Only ephemeral synthetic test keys and a userspace test peer were used; the user's server and profile were not used.
+Windows amd64, Go 1.27.3, Fyne v2.8.2, LLVM MinGW 20261020. Independent core commit `1592207a98f0c516e8f99eea49e169f4bcae692f`; official AmneziaWG `v3.1.20260828` commit `b5928efb6ca19f0153958460c3d141f04abc5c2e`. Only ephemeral synthetic test keys and a userspace test peer were used; the user's server and profile were not used.
+
+The core startup initialization race detected by GitHub CI was fixed at the pinned commit without changing the official engine or cryptography. The final full core suite passed after that fix, including 100 cycles, deterministic legacy-server DNS retry and the actual product-supervisor lab. Targeted race, startup offset, no-UDP-during-validation and close-before-config checks passed. See the core repository test results for timings and scope.
 
 Passed:
 
 - Core: real handshake, in-tunnel DNS, SOCKS5 domain CONNECT, HTTP forward and CONNECT, negative direct-fallback case, peer loss, port-conflict handling and child EOF cleanup. A normal 100-cycle connect/handshake/probe/disconnect stress passed before the later relay-idle correction; targeted real network, process and race tests passed again after that correction. See the core repository `TEST_RESULTS.md` for exact scope.
 - Product `RealSupervisor` → separately built core → synthetic userspace AWG peer: handshake, SOCKS5/HTTP requests and process/listener shutdown, including a targeted race run. Configuration and ephemeral keys went through inherited stdin, never environment/arguments/files. Independently built core also passed the product's `TestBuiltCoreControlIntegration`.
-- GUI/product: `go test -tags ci ./...`, `go vet -tags ci ./...`, and `go test -race -tags ci ./...`; owner-death Job Object and DPAPI CurrentUser tests included.
+- GUI/product: `go test -tags ci ./...`, `go vet -tags ci ./...`, and `go test -race -tags ci ./...`; owner-death Job Object and DPAPI CurrentUser tests included. UI port-selection tests cover loopback-only addresses, numeric limits and port conflicts; port values currently reset to defaults on restart.
 - Core `go vet`, `go mod verify`, targeted race, parser and IPC fuzz smoke passed. 100 cycles were not run under race; long-term handle/heap growth was not measured.
 - Snapshot comparison of Windows routes, adapters, DNS, WinINET proxy and WinHTTP proxy before/after a synthetic core lab was identical. Windows displayed a firewall permission prompt for `core.test`; no permission was accepted and no firewall rule was changed by this work.
 - `govulncheck` v1.1.4 after updating GUI `golang.org/x/image` to v0.43.0 found no reachable vulnerabilities. It still reported 11 vulnerabilities in imported packages and 12 in required modules without a detected call path. Core scan found no reachable vulnerabilities, with 2 in imported packages and 36 in required modules without a detected call path. These are scanner results, not a guarantee of absence of vulnerabilities.
