@@ -49,7 +49,11 @@ $guiHash = (Get-FileHash -LiteralPath $guiExe -Algorithm SHA256).Hash.ToLowerInv
     Set-Content -LiteralPath (Join-Path $destination 'SHA256SUMS') -Encoding ascii
 Copy-Item -LiteralPath (Join-Path $product 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $product 'QUICKSTART.md') -Destination $destination
-Copy-Item -LiteralPath (Join-Path $product 'core.lock.json') -Destination $destination
+$lock.binary_sha256 = $coreHash
+$lock.build_toolchain = (& $GoExe version).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Could not record the Go toolchain version.' }
+$lock.binary_scope = 'unsigned local build; checksum describes the core included in this package'
+$lock | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $destination 'core.lock.json')
 Copy-Item -LiteralPath (Join-Path $product 'THIRD_PARTY_NOTICES.md') -Destination $destination
 [void][IO.Directory]::CreateDirectory((Join-Path $destination 'docs'))
 foreach ($name in @('CORE_SELECTION.md', 'LICENSE_AUDIT.md', 'IMPLEMENTATION.md', 'TEST_RESULTS.md', 'DEPENDENCY_LICENSE_REVIEW.md')) {

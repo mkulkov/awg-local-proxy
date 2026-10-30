@@ -9,9 +9,9 @@
   "engine_license": "MIT",
   "wrapper_license": "not_assigned_by_owner",
   "binary": "awg-proxy-core.exe",
-  "binary_sha256": "90179fc597d6e606c863cfdc2f46ed0d331304e46e2e61d0604689ee132fbce2",
-  "build_toolchain": "go1.27.3 windows/amd64",
-  "binary_scope": "local unsigned development build 2026-10-30; not a verified reproducible release",
+  "binary_sha256": "eeeeb9c0ec7ab3593af26984f04f052650552530f12e87e9e0d32adb58a87979",
+  "build_toolchain": "go1.27.3 windows/amd64 CGO_ENABLED=1",
+  "binary_scope": "reference unsigned local development build; packaging records its own actual binary hash",
   "excluded_original_upstream": "https://github.com/synacker/amnezia-proxy",
   "excluded_original_upstream_license_status": "NO_EXPLICIT_LICENSE_FOUND"
 }
