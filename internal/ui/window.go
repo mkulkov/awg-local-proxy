@@ -19,6 +19,7 @@ import (
 
 	"github.com/mkulkov/awg-local-proxy/internal/autostart"
 	"github.com/mkulkov/awg-local-proxy/internal/coreclient"
+	"github.com/mkulkov/awg-local-proxy/internal/diagtrace"
 	"github.com/mkulkov/awg-local-proxy/internal/preferences"
 	"github.com/mkulkov/awg-local-proxy/internal/profiles"
 	"github.com/mkulkov/awg-local-proxy/internal/session"
@@ -77,7 +78,9 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 	if real != nil {
 		title = "AWG Local Proxy"
 	}
+	diagtrace.Step("ui create window begin")
 	w := a.NewWindow(title)
+	diagtrace.Step("ui create window returned")
 	w.Resize(fyne.NewSize(700, 540))
 	w.SetMaster()
 	status := widget.NewLabel("Остановлено")
@@ -115,10 +118,13 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 		profile.SetOptions(names)
 		profile.SetSelectedIndex(0)
 	}
+	diagtrace.Step("ui load profile list begin")
 	refreshProfiles()
+	diagtrace.Step("ui load profile list returned")
 	var prefStore *preferences.Store
 	var saved preferences.Settings
 	var prefErr error
+	diagtrace.Step("ui preferences begin")
 	if real != nil {
 		prefStore, prefErr = preferences.OpenDefault()
 		if prefErr == nil {
@@ -148,6 +154,7 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 			}
 		}
 	}
+	diagtrace.Step("ui preferences returned")
 	active := false
 	busy := false
 	quitting := false
@@ -635,8 +642,10 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 		portHint.Wrapping = fyne.TextWrapWord
 		settingsPage = container.NewVBox(settings, startup, startupInfo, autoConnect, prefInfo, saveStartup, widget.NewLabel("Порт SOCKS5 (127.0.0.1)"), socksPort, widget.NewLabel("Порт HTTP (127.0.0.1)"), httpPort, portHint)
 	}
+	diagtrace.Step("ui set content begin")
 	tabs := container.NewAppTabs(container.NewTabItem("Подключение", container.NewVScroll(container.NewPadded(connection))), container.NewTabItem("Профили", container.NewVScroll(container.NewPadded(profilePage))), container.NewTabItem("Приложения", container.NewVScroll(apps)), container.NewTabItem("Настройки", container.NewVScroll(container.NewPadded(settingsPage))), container.NewTabItem("Диагностика", container.NewPadded(diagnostics)), container.NewTabItem("О программе", container.NewPadded(about)))
 	w.SetContent(tabs)
+	diagtrace.Step("ui set content returned")
 	quit := func() {
 		if quitting {
 			return
@@ -647,7 +656,10 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 		go func() { _ = core.Close(); fyne.Do(func() { a.Quit() }) }()
 	}
 	if desk, ok := a.(desktop.App); ok {
+		diagtrace.Step("ui tray icon begin")
 		desk.SetSystemTrayIcon(theme.ComputerIcon())
+		diagtrace.Step("ui tray icon returned")
+		diagtrace.Step("ui tray menu begin")
 		desk.SetSystemTrayMenu(fyne.NewMenu("AWG Local Proxy", fyne.NewMenuItem("Открыть", func() { w.Show(); w.RequestFocus() }), fyne.NewMenuItem(startLabel, func() {
 			if !active {
 				run(true)
@@ -657,6 +669,7 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 				run(false)
 			}
 		}), fyne.NewMenuItem("Завершить", quit)))
+		diagtrace.Step("ui tray menu returned")
 		notified := false
 		w.SetCloseIntercept(func() {
 			w.Hide()
@@ -763,5 +776,6 @@ func New(a fyne.App, core coreclient.Client, real *session.Controller, store *pr
 			run(true)
 		})
 	}
+	diagtrace.Step("ui return")
 	return w
 }
