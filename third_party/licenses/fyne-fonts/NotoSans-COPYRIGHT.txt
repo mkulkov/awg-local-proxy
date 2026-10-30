@@ -1,0 +1,5 @@
+Noto Sans regular/bold/italic/bold-italic fonts bundled by Fyne v2.8.2.
+Copyright 2015 Google Inc. All Rights Reserved.
+Licensed under the SIL Open Font License, Version 1.1; see LICENSE.txt.
+Copyright and license identification were read from the font name table
+of NotoSans-Regular.ttf (name IDs 0, 13, 14) in the pinned Fyne module.

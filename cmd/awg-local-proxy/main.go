@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -16,6 +17,10 @@ import (
 	"github.com/mkulkov/awg-local-proxy/internal/profiles"
 	"github.com/mkulkov/awg-local-proxy/internal/ui"
 )
+
+// Set by the local build when a reviewed core binary is bundled. An empty
+// value deliberately keeps the network-free demonstration mode.
+var expectedRealCoreSHA256 string
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--mock-core" {
@@ -43,16 +48,22 @@ func main() {
 		fmt.Fprintln(os.Stderr, "executable unavailable")
 		return
 	}
-	b, err := os.ReadFile(exe)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "executable unreadable")
-		return
+	var core coreclient.Client
+	var real *coreclient.RealSupervisor
+	if expectedRealCoreSHA256 != "" {
+		real, err = coreclient.StartReal(filepath.Join(filepath.Dir(exe), "awg-proxy-core.exe"), expectedRealCoreSHA256)
+		core = real
+	} else {
+		var b []byte
+		b, err = os.ReadFile(exe)
+		if err == nil {
+			h := sha256.Sum256(b)
+			core, err = coreclient.StartMock(exe, hex.EncodeToString(h[:]))
+		}
 	}
-	h := sha256.Sum256(b)
-	core, err := coreclient.StartMock(exe, hex.EncodeToString(h[:]))
 	if err != nil {
 		w := a.NewWindow("Ошибка")
-		dialog.ShowInformation("Демонстрация недоступна", "Не удалось запустить демонстрационный процесс.", w)
+		dialog.ShowInformation("Ядро недоступно", "Не удалось проверить или запустить компонент. Подключение не выполнено.", w)
 		w.ShowAndRun()
 		return
 	}
@@ -62,7 +73,7 @@ func main() {
 	if storageErr == nil {
 		store, storageErr = profiles.Open(root, profiles.DPAPI{})
 	}
-	w := ui.New(a, core, store, storageErr)
+	w := ui.New(a, core, real, store, storageErr)
 	instance.Watch(func() { fyne.Do(func() { w.Show(); w.RequestFocus() }) })
 	w.ShowAndRun()
 }

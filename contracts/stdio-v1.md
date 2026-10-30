@@ -1,15 +1,16 @@
 # AWG Local Proxy control protocol v1
 
-This independently authored protocol is a proposed future core interface. Upstream does not implement it. The demo implements a deliberately restricted subset and never accepts a real configuration or opens network listeners.
+This original protocol is transported over inherited stdin/stdout as one UTF-8 NDJSON object per line, maximum 65536 bytes excluding newline. stdout contains protocol only. The core rejects malformed frames, unknown or differently cased properties, duplicate properties, unsupported versions and oversized messages. No TCP control listener is used. EOF closes the child and its resources. Errors return stable codes and never echo input.
 
-Transport: inherited stdin/stdout pipes, one UTF-8 JSON object per line, maximum 65536 bytes excluding newline. No TCP control socket. Closing stdin terminates the mock process. stdout contains protocol only; errors must never contain credentials. Unknown envelope properties, unsupported versions and oversized input terminate the session. IDs are nonempty strings up to 64 bytes.
+Envelope: `{"protocol_version":1,"type":"get_status","id":"1","payload":{}}`. IDs are nonempty strings at most 64 bytes.
 
-Envelope: `{"protocol_version":1,"type":"get_status","id":"1","payload":{}}`.
+Real-core commands:
 
-Commands: `hello`, `validate_config`, `connect`, `disconnect`, `get_status`, `shutdown`. Demo requires an empty object payload for every command. `validate_config` always returns `error` with `real_config_not_supported_in_demo`; no real client profile is accepted. Unknown commands return `unsupported_command`. Responses echo IDs; `hello` returns protocol/core versions, source identity and capabilities; connect/disconnect/get_status return `status`; shutdown acknowledges and exits. Errors contain a stable code and no input reflection.
+- `hello` with `{}` returns `hello` containing protocol/core versions, identity and capabilities.
+- `validate_config` accepts `{"config":"..."}` only over stdin and returns `validated` or `error`.
+- `connect` accepts `config`, `socks_address`, `http_address` (empty disables HTTP), `probe_url` and `timeout_seconds`, and returns `status` or `error`. Config is never passed through command-line arguments, environment, temporary plaintext files or logs.
+- `get_status`, `check_tunnel` and `disconnect` accept `{}` and return `status`. `check_tunnel` repeats the explicitly configured probe; `get_status` sends no network probe. `shutdown` returns an acknowledgement and exits.
 
-Status has `state`, `demo`, `listener_ready`, `tunnel_verified`, optional `handshake_at` and a safe `message`. State values: Stopped, Starting, Connecting, Connected, Degraded, Reconnecting, Stopping, Error. Connected requires an actual listener, confirmed handshake and successful explicitly configured tunnel probe. A demo may never claim Connected, listener readiness, handshake or tunnel verification. In demo, connect goes to Degraded with a visible licensing explanation; disconnect goes to Stopped.
+Status includes `state`, `demo`, `listener_ready`, `tunnel_verified`, optional `handshake_at`, `socks_address`, `http_address`, and a safe `message`. `Connected` requires actual listener readiness, a real handshake, and success of the user-specified tunnel probe. Degraded means a failure was observed; no direct network fallback is attempted. A past successful probe does not establish continuous reachability.
 
-Future real core: connect/validate_config carry a bounded configuration only through stdin; never argv/env/files/clipboard. Asynchronous state/error/counter events require a separate typed reader and request correlation; not yet implemented by this request/response demo. Counters must distinguish TCP payload and encrypted transport. No destination or key material may appear in replies.
-
-The supervisor only launches its own absolute executable as a separate `--mock-core` child, comparing its bytes to the GUI executable's SHA-256. This detects a mismatched demo file; it is not a signed supply-chain trust guarantee. The child has no network package or proxy implementation. EOF handles normal parent death. Real-core activation additionally requires provenance, a reviewed binary lock, Windows Job Object kill-on-close, configuration validation and licensed core support.
+Demo mode accepts empty payloads only, uses its own process, never opens proxy ports and cannot claim a handshake or tunnel. The real supervisor checks a build-pinned executable hash and Windows Job Object. Hash matching alone does not establish binary authenticity. Events and counters are not yet part of this implementation.

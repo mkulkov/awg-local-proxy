@@ -29,6 +29,8 @@ type Status struct {
 	TunnelVerified bool       `json:"tunnel_verified"`
 	HandshakeAt    *time.Time `json:"handshake_at,omitempty"`
 	Message        string     `json:"message"`
+	SocksAddress   string     `json:"socks_address,omitempty"`
+	HTTPAddress    string     `json:"http_address,omitempty"`
 }
 
 type Hello struct {

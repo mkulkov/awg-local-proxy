@@ -10,6 +10,9 @@ import (
 	"unicode/utf8"
 )
 
+// Leave room for worst-case JSON escaping inside the 64 KiB IPC envelope.
+const MaxImportBytes = 8 * 1024
+
 // ValidateImport is a conservative original client-only storage filter. It does
 // not assert cryptographic validity or engine compatibility and never executes a
 // hook. Configurations remain sealed and are not sent to a core in this demo.
@@ -17,7 +20,7 @@ func ValidateImport(input []byte) error {
 	bad := func() error {
 		return errors.New("конфигурация не входит в поддерживаемый безопасный поднабор .conf; файл не сохранён")
 	}
-	if len(input) == 0 || len(input) > maxSecretBytes || !utf8.Valid(input) {
+	if len(input) == 0 || len(input) > MaxImportBytes || !utf8.Valid(input) {
 		return bad()
 	}
 	text := strings.TrimPrefix(string(input), "\ufeff")
@@ -59,13 +62,15 @@ func ValidateImport(input []byte) error {
 		if section == "interface" {
 			switch key {
 			case "i1", "i2", "i3", "i4", "i5":
-				return errors.New("поля I1–I5 пока не импортируются: требуется проверенная грамматика закреплённой версии AWG")
+				if !validObfuscationSpec(value) {
+					return bad()
+				}
 			case "jc", "jmin", "jmax", "s1", "s2", "s3", "s4":
 				if _, err := strconv.ParseUint(value, 10, 16); err != nil {
 					return bad()
 				}
 			case "h1", "h2", "h3", "h4":
-				if _, err := strconv.ParseUint(value, 10, 32); err != nil {
+				if !validHeaderRange(value) {
 					return bad()
 				}
 			}
@@ -115,11 +120,26 @@ func ValidateImport(input []byte) error {
 	if err != nil || n < 1 || n > 65535 {
 		return bad()
 	}
+	mtu := 1420
 	if value := fields["interface.mtu"]; value != "" {
 		n, err := strconv.Atoi(value)
-		if err != nil || n < 576 || n > 9000 {
+		if err != nil || n < 576 || n > 1984 {
 			return bad()
 		}
+		mtu = n
+	}
+	// Windows buffers in the pinned engine have a 2016-byte datagram limit.
+	// Reject incompatible profiles rather than rewriting any server parameters.
+	number := func(name string) uint64 { n, _ := strconv.ParseUint(fields["interface."+name], 10, 32); return n }
+	if number("s1")+148 > 2016 || number("s2")+92 > 2016 || number("s3")+64 > 2016 || uint64(mtu)+number("s4")+32 > 2016 {
+		return bad()
+	}
+	jc, jmin, jmax := number("jc"), number("jmin"), number("jmax")
+	if jc > 128 || jmin > 2016 || jmax > 2016 || jmin > jmax {
+		return bad()
+	}
+	if jc > 0 && (fields["interface.jmin"] == "" || fields["interface.jmax"] == "" || jmin >= jmax) {
+		return bad()
 	}
 	if value := fields["peer.persistentkeepalive"]; value != "" {
 		n, err := strconv.Atoi(value)
@@ -128,6 +148,120 @@ func ValidateImport(input []byte) error {
 		}
 	}
 	return nil
+}
+
+// Grammar and bounds match the pinned amneziawg-go/v3 v3.1.20260828 engine,
+// with stricter complete-string parsing and resource limits. The engine's
+// obfChain parser otherwise ignores text outside tags and extra tag arguments.
+// This storage filter does not replace the core's inactive-device validation.
+func validObfuscationSpec(value string) bool {
+	if len(value) == 0 || len(value) > 4096 {
+		return false
+	}
+	for _, c := range []byte(value) {
+		if c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	count, fixed := 0, 0
+	for remaining := strings.TrimSpace(value); remaining != ""; {
+		if remaining[0] != '<' {
+			return false
+		}
+		end := strings.IndexByte(remaining, '>')
+		if end < 0 {
+			return false
+		}
+		tag := remaining[1:end]
+		if strings.ContainsAny(tag, "<>") {
+			return false
+		}
+		parts := strings.Fields(tag)
+		if len(parts) == 0 || len(parts) > 2 {
+			return false
+		}
+		count++
+		if count > 32 {
+			return false
+		}
+		switch parts[0] {
+		case "t", "d", "ds":
+			if len(parts) != 1 {
+				return false
+			}
+			if parts[0] == "t" {
+				fixed += 4
+			}
+		case "b":
+			if len(parts) != 2 {
+				return false
+			}
+			hex := strings.TrimPrefix(parts[1], "0x")
+			if len(hex) == 0 || len(hex)%2 != 0 {
+				return false
+			}
+			for _, c := range []byte(hex) {
+				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+					return false
+				}
+			}
+			fixed += len(hex) / 2
+		case "r", "rc", "rd", "dz":
+			if len(parts) != 2 || !decimalDigits(parts[1]) {
+				return false
+			}
+			n, err := strconv.ParseUint(parts[1], 10, 16)
+			if err != nil || n > 4096 {
+				return false
+			}
+			if parts[0] == "dz" && (n < 1 || n > 8) {
+				return false
+			}
+			fixed += int(n)
+		default:
+			return false
+		}
+		if fixed > 2016 {
+			return false
+		}
+		remaining = strings.TrimSpace(remaining[end+1:])
+	}
+	return count > 0
+}
+
+func decimalDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, c := range []byte(value) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validHeaderRange(value string) bool {
+	parts := strings.Split(value, "-")
+	if len(parts) < 1 || len(parts) > 2 {
+		return false
+	}
+	var numbers [2]uint64
+	for i, part := range parts {
+		if !decimalDigits(part) {
+			return false
+		}
+		n, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return false
+		}
+		numbers[i] = n
+	}
+	if len(parts) == 1 {
+		return true
+	}
+	// A full uint32 range overflows the pinned engine's range-length arithmetic.
+	return numbers[0] <= numbers[1] && !(numbers[0] == 0 && numbers[1] == 1<<32-1)
 }
 
 // ClientConfigForStorage omits comments, which may contain unrelated secrets.

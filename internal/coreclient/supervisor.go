@@ -19,13 +19,14 @@ import (
 // Supervisor manages only its own network-free mock child. Real core activation
 // must add provenance verification and Windows kill-on-close before use.
 type Supervisor struct {
-	mu     sync.Mutex
-	cmd    *exec.Cmd
-	in     io.WriteCloser
-	out    *bufio.Reader
-	done   chan struct{}
-	seq    uint64
-	closed bool
+	mu       sync.Mutex
+	requests chan struct{}
+	cmd      *exec.Cmd
+	in       io.WriteCloser
+	out      *bufio.Reader
+	done     chan struct{}
+	seq      uint64
+	closed   bool
 }
 
 func StartMock(executable string, expectedSHA256 string) (*Supervisor, error) {
@@ -57,7 +58,7 @@ func StartMock(executable string, expectedSHA256 string) (*Supervisor, error) {
 		out.Close()
 		return nil, err
 	}
-	s := &Supervisor{cmd: cmd, in: in, out: bufio.NewReader(out), done: make(chan struct{})}
+	s := &Supervisor{cmd: cmd, in: in, out: bufio.NewReader(out), done: make(chan struct{}), requests: make(chan struct{}, 1)}
 	go func() { _ = cmd.Wait(); close(s.done) }()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -70,16 +71,28 @@ func StartMock(executable string, expectedSHA256 string) (*Supervisor, error) {
 }
 
 func (s *Supervisor) request(ctx context.Context, kind string, target any) error {
+	// Serialize messages without holding the lifecycle mutex over pipe I/O.
+	// Close must be able to interrupt a child that never replies.
+	select {
+	case s.requests <- struct{}{}:
+		defer func() { <-s.requests }()
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.done:
+		return errors.New("core is stopped")
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return errors.New("core is stopped")
 	}
 	if err := ctx.Err(); err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	s.seq++
 	id := strconv.FormatUint(s.seq, 10)
+	s.mu.Unlock()
 	type result struct {
 		m   Message
 		err error
@@ -95,15 +108,18 @@ func (s *Supervisor) request(ctx context.Context, kind string, target any) error
 	}()
 	select {
 	case <-ctx.Done():
-		s.closed = true
-		s.in.Close()
-		_ = s.cmd.Process.Kill()
+		s.stop(true)
 		return ctx.Err()
 	case r := <-ch:
 		if r.err != nil {
+			s.stop(true)
 			return errors.New("demo core pipe closed")
 		}
-		if r.m.ID != id || r.m.Type == "error" {
+		if r.m.ID != id {
+			s.stop(true)
+			return errors.New("unexpected core reply")
+		}
+		if r.m.Type == "error" {
 			return errors.New("demo core rejected request")
 		}
 		want := "status"
@@ -111,16 +127,22 @@ func (s *Supervisor) request(ctx context.Context, kind string, target any) error
 			want = kind
 		}
 		if r.m.Type != want {
+			s.stop(true)
 			return errors.New("unexpected core reply")
 		}
 		if err := json.Unmarshal(r.m.Payload, target); err != nil {
+			s.stop(true)
 			return errors.New("invalid core reply")
 		}
 		if st, ok := target.(*Status); ok {
 			if !st.Demo {
+				s.stop(true)
 				return errors.New("expected demo core")
 			}
-			return st.Validate()
+			if err := st.Validate(); err != nil {
+				s.stop(true)
+				return err
+			}
 		}
 		return nil
 	}
@@ -147,12 +169,7 @@ func (s *Supervisor) Status(ctx context.Context) (Status, error) {
 	return v, err
 }
 func (s *Supervisor) Close() error {
-	s.mu.Lock()
-	if !s.closed {
-		s.closed = true
-		_ = s.in.Close()
-	}
-	s.mu.Unlock()
+	s.stop(false)
 	select {
 	case <-s.done:
 		return nil
@@ -160,5 +177,17 @@ func (s *Supervisor) Close() error {
 		_ = s.cmd.Process.Kill()
 		<-s.done
 		return errors.New("demo core required termination")
+	}
+}
+
+func (s *Supervisor) stop(kill bool) {
+	s.mu.Lock()
+	if !s.closed {
+		s.closed = true
+		_ = s.in.Close()
+	}
+	s.mu.Unlock()
+	if kill {
+		_ = s.cmd.Process.Kill()
 	}
 }

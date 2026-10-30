@@ -1,0 +1,11 @@
+Go bindings for Wintun, revision 0fa3db229ce2.
+
+SPDX-License-Identifier: MIT
+Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
+
+The identification above is preserved from the file headers of wintun.go,
+session.go and dll.go in the pinned module. The complete permission and
+disclaimer text is in LICENSE in this directory.
+
+This notice concerns the Go bindings. It does not license, include or imply
+distribution of a Wintun DLL or driver.

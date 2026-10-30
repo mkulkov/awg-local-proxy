@@ -3,10 +3,22 @@ package coreclient
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 )
+
+type shortWriter struct{}
+
+func (shortWriter) Write(b []byte) (int, error) { return len(b) - 1, nil }
+
+func TestWriteMessageRejectsTruncatedWrite(t *testing.T) {
+	if err := WriteMessage(shortWriter{}, "hello", "1", struct{}{}); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("truncated IPC write accepted: %v", err)
+	}
+}
 
 func TestEnvelopeLimits(t *testing.T) {
 	for _, s := range []string{

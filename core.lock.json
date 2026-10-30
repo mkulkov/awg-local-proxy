@@ -1,14 +1,17 @@
 {
   "schema_version": 1,
-  "repository": "https://github.com/mkulkov/amnezia-proxy",
-  "upstream": "https://github.com/synacker/amnezia-proxy",
-  "source_commit": "f5a7912dba8b128ae5c1a3f68a06be7c1668b908",
+  "repository": "https://github.com/mkulkov/awg-local-proxy-core",
+  "source_commit": "3b07ac9fbdbc5d97895b3a81136fe2865d8df48f",
   "ipc_protocol_version": 1,
   "awg_module": "github.com/amnezia-vpn/amneziawg-go/v3",
   "awg_module_version": "v3.1.20260828",
-  "license_status": "blocked",
-  "binary": null,
-  "binary_sha256": null,
-  "build_toolchain": null,
-  "reason": "No explicit upstream license found. No real core is built, downloaded or distributed."
+  "awg_source_commit": "b5928efb6ca19f0153958460c3d141f04abc5c2e",
+  "engine_license": "MIT",
+  "wrapper_license": "not_assigned_by_owner",
+  "binary": "awg-proxy-core.exe",
+  "binary_sha256": "845c2903496b676984af53d8a772627f4e4f60897d6d8902372fad328171db9f",
+  "build_toolchain": "go1.27.3 windows/amd64",
+  "binary_scope": "local unsigned development build 2026-10-30; not a verified reproducible release",
+  "excluded_original_upstream": "https://github.com/synacker/amnezia-proxy",
+  "excluded_original_upstream_license_status": "NO_EXPLICIT_LICENSE_FOUND"
 }

@@ -93,6 +93,9 @@ func WriteMessage(w io.Writer, kind, id string, payload any) error {
 		return errors.New("IPC message too large")
 	}
 	b = append(b, '\n')
-	_, err = w.Write(b)
+	n, err := w.Write(b)
+	if err == nil && n != len(b) {
+		return io.ErrShortWrite
+	}
 	return err
 }

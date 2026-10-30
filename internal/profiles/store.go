@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -215,7 +216,27 @@ func readBounded(path string, max int64) ([]byte, error) {
 	if !fi.Mode().IsRegular() || fi.Size() > max {
 		return nil, errors.New("invalid profile file")
 	}
-	return os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	// Check the opened file as well as the directory entry, then enforce the
+	// bound while reading: another writer may grow it after either Stat call.
+	fi, err = f.Stat()
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > max {
+		return nil, errors.New("invalid profile file")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		clear(b)
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		clear(b)
+		return nil, errors.New("invalid profile file")
+	}
+	return b, nil
 }
 
 func atomicWrite(root, name string, b []byte) error {

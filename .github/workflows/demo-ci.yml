@@ -1,0 +1,94 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-product:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Check toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gcc --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check formatting and module checksums
+        shell: pwsh
+        run: |
+          $files = @(git ls-files '*.go')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $unformatted = @(gofmt -l $files)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($unformatted.Count -gt 0) { $unformatted; throw 'Go files require gofmt' }
+          go mod verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test and vet
+        shell: pwsh
+        run: |
+          go test -tags ci ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go vet -tags ci ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Race detector
+        shell: pwsh
+        run: |
+          go test -race -tags ci ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fuzz smoke
+        shell: pwsh
+        run: |
+          go test ./internal/profiles -run '^$' -fuzz '^FuzzValidateImport$' -fuzztime 3s -parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test ./internal/coreclient -run '^$' -fuzz '^FuzzReadMessage$' -fuzztime 3s -parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Checkout pinned independent core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mkulkov/awg-local-proxy-core
+          ref: 3b07ac9fbdbc5d97895b3a81136fe2865d8df48f
+          path: .ci-core
+          persist-credentials: false
+      - name: Verify core pin and synthetic end-to-end tunnel
+        shell: pwsh
+        run: |
+          $lock = Get-Content -Raw core.lock.json | ConvertFrom-Json
+          $sha = (git -C .ci-core rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $lock.source_commit) { throw 'Core checkout differs from lock' }
+          $env:AWG_PRODUCT_LAB_HELPER = Join-Path $env:RUNNER_TEMP 'awg-product-supervisor.test.exe'
+          go test -c -tags ci -o $env:AWG_PRODUCT_LAB_HELPER ./internal/coreclient
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location .ci-core
+          try {
+            go test ./core -run '^TestProductRealSupervisorUserspaceLab$' -count=1 -timeout 90s -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally { Pop-Location }
+      - name: Build independent demo
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -trimpath -ldflags='-H=windowsgui' -o dist/AwgLocalProxy-demo.exe ./cmd/awg-local-proxy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -trimpath -o dist/awg-mock-core.exe ./cmd/awg-mock-core
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

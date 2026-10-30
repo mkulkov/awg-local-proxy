@@ -1,0 +1,7 @@
+# Alternative core decision
+
+On 2026-10-30 the user explicitly authorized selecting another core while retaining the project network and security constraints. The intended independent component uses the official `github.com/amnezia-vpn/amneziawg-go/v3` module at `v3.1.20260828` (commit `b5928efb6ca19f0153958460c3d141f04abc5c2e`) and an independently authored proxy/controller. It does not incorporate source from `synacker/amnezia-proxy`.
+
+The official engine's [LICENSE](https://github.com/amnezia-vpn/amneziawg-go/blob/b5928efb6ca19f0153958460c3d141f04abc5c2e/LICENSE) is MIT. Its [module file](https://github.com/amnezia-vpn/amneziawg-go/blob/b5928efb6ca19f0153958460c3d141f04abc5c2e/go.mod) pins gVisor `v0.0.0-20231202080848-1f7806d17489`, whose [LICENSE](https://github.com/google/gvisor/blob/1f7806d17489620e45d46c33933cf8f7010a1436/LICENSE) is Apache-2.0. These two findings are not a complete dependency license audit. Distribution is subject to a full dependency and notices review.
+
+The original [license audit](LICENSE_AUDIT.md) and its prohibition on modifying or distributing the original proxy remain in effect. This decision does not grant a license to the independent product itself; its owner has not selected one. A compile, `device.Up`, or an open proxy port does not establish a connected tunnel. Synthetic local tests and tests against the user's server must be reported separately.

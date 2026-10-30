@@ -1,3 +1,21 @@
+# Real-core integration verification — 2026-10-30
+
+Windows amd64, Go 1.27.3, Fyne v2.8.2, LLVM MinGW 20261020. Independent core commit `3b07ac9fbdbc5d97895b3a81136fe2865d8df48f`; official AmneziaWG `v3.1.20260828` commit `b5928efb6ca19f0153958460c3d141f04abc5c2e`. Only ephemeral synthetic test keys and a userspace test peer were used; the user's server and profile were not used.
+
+Passed:
+
+- Core: real handshake, in-tunnel DNS, SOCKS5 domain CONNECT, HTTP forward and CONNECT, negative direct-fallback case, peer loss, port-conflict handling and child EOF cleanup. A normal 100-cycle connect/handshake/probe/disconnect stress passed before the later relay-idle correction; targeted real network, process and race tests passed again after that correction. See the core repository `TEST_RESULTS.md` for exact scope.
+- Product `RealSupervisor` → separately built core → synthetic userspace AWG peer: handshake, SOCKS5/HTTP requests and process/listener shutdown, including a targeted race run. Configuration and ephemeral keys went through inherited stdin, never environment/arguments/files. Independently built core also passed the product's `TestBuiltCoreControlIntegration`.
+- GUI/product: `go test -tags ci ./...`, `go vet -tags ci ./...`, and `go test -race -tags ci ./...`; owner-death Job Object and DPAPI CurrentUser tests included.
+- Core `go vet`, `go mod verify`, targeted race, parser and IPC fuzz smoke passed. 100 cycles were not run under race; long-term handle/heap growth was not measured.
+- Snapshot comparison of Windows routes, adapters, DNS, WinINET proxy and WinHTTP proxy before/after a synthetic core lab was identical. Windows displayed a firewall permission prompt for `core.test`; no permission was accepted and no firewall rule was changed by this work.
+- `govulncheck` v1.1.4 after updating GUI `golang.org/x/image` to v0.43.0 found no reachable vulnerabilities. It still reported 11 vulnerabilities in imported packages and 12 in required modules without a detected call path. Core scan found no reachable vulnerabilities, with 2 in imported packages and 36 in required modules without a detected call path. These are scanner results, not a guarantee of absence of vulnerabilities.
+- Visible real-mode window smoke: title and profile/probe fields, refusal to connect without a profile, close-to-tray and second-launch restore. That run preceded the final dependency rebuild and last deletion-race fix. Full DPI, accessibility and graceful tray Quit acceptance remain outstanding.
+
+The binary is unsigned. Hash pinning detects mismatch between the GUI and adjacent core but does not authenticate an unsigned build. Notices for this exact dependency graph and toolchain are in `THIRD_PARTY_NOTICES.md` and `third_party/licenses/`; the independent product's own license has not been chosen. No public binary release or claim of production readiness is made.
+
+---
+
 # Independent demo verification — 2026-10-30
 
 Environment: Windows amd64, Go 1.27.3; local LLVM MinGW 20261020 UCRT x86_64 C compiler. Fyne v2.8.2 is the GitHub latest non-prerelease checked during implementation. No global Go/Codex settings were changed by this implementation.

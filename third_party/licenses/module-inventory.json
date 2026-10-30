@@ -1,0 +1,502 @@
+{
+  "audit_date": "2026-10-30",
+  "target": "windows/amd64, CGO_ENABLED=1",
+  "method": "go list -deps for cmd/awg-local-proxy and cmd/awg-proxy-core; module-level compilation closure, not linker symbol inventory",
+  "modules": [
+    {
+      "build": "AwgLocalProxy",
+      "module": "fyne.io/fyne/v2",
+      "version": "v2.8.2",
+      "license_files": [
+        "fyne.io_fyne_v2@v2.8.2/AUTHORS",
+        "fyne.io_fyne_v2@v2.8.2/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/fyne-io/fyne",
+        "Hash": "77c1fa8e0a50b6cbd04cd6c4454289e55a307a2d",
+        "Ref": "refs/tags/v2.8.2"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "fyne.io/systray",
+      "version": "v1.12.3-0.20260810170012-af4e8e793ec4",
+      "license_files": [
+        "fyne.io_systray@v1.12.3-0.20260810170012-af4e8e793ec4/LICENSE"
+      ],
+      "license": "Apache-2.0",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/fyne-io/systray",
+        "Hash": "af4e8e793ec41478745847ddc602b07713fe4136"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/anthonynsimon/bild",
+      "version": "v0.14.0",
+      "license_files": [
+        "github.com_anthonynsimon_bild@v0.14.0/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/anthonynsimon/bild",
+        "Hash": "92d0456ebbe79fc6d81c8911779839651304852c",
+        "Ref": "refs/tags/v0.14.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/BurntSushi/toml",
+      "version": "v1.6.0",
+      "license_files": [
+        "github.com_BurntSushi_toml@v1.6.0/COPYING"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/BurntSushi/toml",
+        "Hash": "52534926c55b4cd85b05aee90569dd0668b8cf30"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/clipperhouse/uax29/v2",
+      "version": "v2.2.0",
+      "license_files": [
+        "github.com_clipperhouse_uax29_v2@v2.2.0/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/clipperhouse/uax29",
+        "Hash": "51ff7369f00be9d974b27846d43cb5b09fa20dac",
+        "Ref": "refs/tags/v2.2.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/fsnotify/fsnotify",
+      "version": "v1.9.0",
+      "license_files": [
+        "github.com_fsnotify_fsnotify@v1.9.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/fsnotify/fsnotify",
+        "Hash": "ae0e7923765f64fb8061396db7edebb558cf6093",
+        "Ref": "refs/tags/v1.9.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/fyne-io/image",
+      "version": "v0.1.1",
+      "license_files": [
+        "github.com_fyne-io_image@v0.1.1/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/fyne-io/image",
+        "Hash": "0fbf3631d7fa35341bfb4dc96ca7cfdd016d4a7f"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/fyne-io/oksvg",
+      "version": "v0.2.1-0.20260918172519-a9af55fa95d9",
+      "license_files": [
+        "github.com_fyne-io_oksvg@v0.2.1-0.20260918172519-a9af55fa95d9/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/fyne-io/oksvg",
+        "Hash": "a9af55fa95d91a8ef9d7f0b0d12b0e9d0b158f0c"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/FyshOS/fancyfs",
+      "version": "v0.0.1",
+      "license_files": [
+        "github.com_FyshOS_fancyfs@v0.0.1/AUTHORS",
+        "github.com_FyshOS_fancyfs@v0.0.1/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/FyshOS/fancyfs",
+        "Hash": "c746d330a57917aedab8a9bc1a0d08ec21f63c56",
+        "Ref": "refs/tags/v0.0.1"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/go-gl/gl",
+      "version": "v0.0.0-20260331235117-4566fea9a276",
+      "license_files": [
+        "github.com_go-gl_gl@v0.0.0-20260331235117-4566fea9a276/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/go-gl/gl",
+        "Hash": "4566fea9a2762279aa48096fa3a0339db7406044"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/go-gl/glfw/v3.4/glfw",
+      "version": "v0.1.0-pre.2",
+      "license_files": [
+        "github.com_go-gl_glfw_v3.4_glfw@v0.1.0-pre.2/LICENSE"
+      ],
+      "license": "BSD-3-Clause (Go binding); additional C/header terms below",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/go-gl/glfw",
+        "Subdir": "v3.4/glfw",
+        "Hash": "d41da22a9587f777098f96d37014f6cdd35d1afb",
+        "Ref": "refs/tags/v3.4/glfw/v0.1.0-pre.2"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/go-text/render",
+      "version": "v0.2.1",
+      "license_files": [
+        "github.com_go-text_render@v0.2.1/LICENSE"
+      ],
+      "license": "Unlicense OR BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/go-text/render",
+        "Hash": "2aa2e8cb907af8e8413c81735b9bf21d24bb0a22",
+        "Ref": "refs/tags/v0.2.1"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/go-text/typesetting",
+      "version": "v0.3.5",
+      "license_files": [
+        "github.com_go-text_typesetting@v0.3.5/LICENSE"
+      ],
+      "license": "Unlicense OR BSD-3-Clause; HarfBuzz MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/go-text/typesetting",
+        "Hash": "19482bd51f2338e34bacd8cfd3288a04bbadc598",
+        "Ref": "refs/tags/v0.3.5"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/godbus/dbus/v5",
+      "version": "v5.2.2",
+      "license_files": [
+        "github.com_godbus_dbus_v5@v5.2.2/LICENSE"
+      ],
+      "license": "BSD-2-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/godbus/dbus",
+        "Hash": "a8ac15ba63645f02ffd57f4b443203279ab40b30",
+        "Ref": "refs/tags/v5.2.2"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/jeandeaual/go-locale",
+      "version": "v0.0.0-20250612000132-0ef82f21eade",
+      "license_files": [
+        "github.com_jeandeaual_go-locale@v0.0.0-20250612000132-0ef82f21eade/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/jeandeaual/go-locale",
+        "Hash": "0ef82f21eadeb5a4b6be84499ab99c89d825778c"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/jsummers/gobmp",
+      "version": "v0.0.0-20230614200233-a9de23ed2e25",
+      "license_files": [
+        "github.com_jsummers_gobmp@v0.0.0-20230614200233-a9de23ed2e25/COPYING.txt"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/jsummers/gobmp",
+        "Hash": "a9de23ed2e25aab2524e9dde05848a290908e33a"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/mattn/go-runewidth",
+      "version": "v0.0.24",
+      "license_files": [
+        "github.com_mattn_go-runewidth@v0.0.24/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/mattn/go-runewidth",
+        "Hash": "0383c20520084afbe27423b6a24301c9e59c4a4b",
+        "Ref": "refs/tags/v0.0.24"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/nfnt/resize",
+      "version": "v0.0.0-20180221191011-83c6a9932646",
+      "license_files": [
+        "github.com_nfnt_resize@v0.0.0-20180221191011-83c6a9932646/LICENSE"
+      ],
+      "license": "ISC",
+      "origin": {}
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/nicksnyder/go-i18n/v2",
+      "version": "v2.5.1",
+      "license_files": [
+        "github.com_nicksnyder_go-i18n_v2@v2.5.1/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/nicksnyder/go-i18n",
+        "Hash": "433387163c593d1e5e8999e5465b99108ed7c6a2",
+        "Ref": "refs/tags/v2.5.1"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/srwiley/oksvg",
+      "version": "v0.0.0-20221011165216-be6e8873101c",
+      "license_files": [
+        "github.com_srwiley_oksvg@v0.0.0-20221011165216-be6e8873101c/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/srwiley/oksvg",
+        "Hash": "be6e8873101c44443f4a5f471c3e50cbe38bab5e"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/srwiley/rasterx",
+      "version": "v0.0.0-20220730225603-2ab79fcdd4ef",
+      "license_files": [
+        "github.com_srwiley_rasterx@v0.0.0-20220730225603-2ab79fcdd4ef/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {}
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "github.com/yuin/goldmark",
+      "version": "v1.8.2",
+      "license_files": [
+        "github.com_yuin_goldmark@v1.8.2/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/yuin/goldmark",
+        "Hash": "379bf24a47e6ef07f34d7536aead86d8792ac300",
+        "Ref": "refs/tags/v1.8.2"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "golang.org/x/image",
+      "version": "v0.43.0",
+      "license_files": [
+        "golang.org_x_image@v0.43.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/image",
+        "Hash": "b5baf4103fb7c5369917da9cc1168bdb3a50bb53",
+        "Ref": "refs/tags/v0.43.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "golang.org/x/net",
+      "version": "v0.35.0",
+      "license_files": [
+        "golang.org_x_net@v0.35.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/net",
+        "Hash": "df97a48b7bf2f79d63b98d48185389824125a2cf",
+        "Ref": "refs/tags/v0.35.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "golang.org/x/sys",
+      "version": "v0.37.0",
+      "license_files": [
+        "golang.org_x_sys@v0.37.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/sys",
+        "Hash": "1edeebeea09c66c5a886ccfefb1be5dafac5c893",
+        "Ref": "refs/tags/v0.37.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxy",
+      "module": "golang.org/x/text",
+      "version": "v0.38.0",
+      "license_files": [
+        "golang.org_x_text@v0.38.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/text",
+        "Hash": "f4bb6328041b090f85b93014bd369edfcd24bdef",
+        "Ref": "refs/tags/v0.38.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "github.com/amnezia-vpn/amneziawg-go/v3",
+      "version": "v3.1.20260828",
+      "license_files": [
+        "github.com_amnezia-vpn_amneziawg-go_v3@v3.1.20260828/LICENSE"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/amnezia-vpn/amneziawg-go",
+        "Hash": "b5928efb6ca19f0153958460c3d141f04abc5c2e",
+        "Ref": "refs/tags/v3.1.20260828"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "github.com/google/btree",
+      "version": "v1.1.3",
+      "license_files": [
+        "github.com_google_btree@v1.1.3/LICENSE"
+      ],
+      "license": "Apache-2.0",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/google/btree",
+        "Hash": "aeba20f7a1e1315badec4eca4fdc9f754f5f880a",
+        "Ref": "refs/tags/v1.1.3"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "golang.org/x/crypto",
+      "version": "v0.42.0",
+      "license_files": [
+        "golang.org_x_crypto@v0.42.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/crypto",
+        "Hash": "5307a0ce6db8057c8d7c4378dc4bd715b4985ba1",
+        "Ref": "refs/tags/v0.42.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "golang.org/x/net",
+      "version": "v0.44.0",
+      "license_files": [
+        "golang.org_x_net@v0.44.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/net",
+        "Hash": "3b23d576ea72235a3fef8f157eb5ab76e65854a8",
+        "Ref": "refs/tags/v0.44.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "golang.org/x/sys",
+      "version": "v0.36.0",
+      "license_files": [
+        "golang.org_x_sys@v0.36.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/sys",
+        "Hash": "b06ce0514ea5467cf3ac72ad85e4d1845c51fbad",
+        "Ref": "refs/tags/v0.36.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "golang.org/x/time",
+      "version": "v0.9.0",
+      "license_files": [
+        "golang.org_x_time@v0.9.0/LICENSE"
+      ],
+      "license": "BSD-3-Clause",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://go.googlesource.com/time",
+        "Hash": "1ce61fe87e0e5dd90752d2b6c5972f9b6918e77c",
+        "Ref": "refs/tags/v0.9.0"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "golang.zx2c4.com/wintun",
+      "version": "v0.0.0-20230126152724-0fa3db229ce2",
+      "license_files": [
+        "golang.zx2c4.com_wintun@v0.0.0-20230126152724-0fa3db229ce2/LICENSE",
+        "golang.zx2c4.com_wintun@v0.0.0-20230126152724-0fa3db229ce2/COPYRIGHT.txt"
+      ],
+      "license": "MIT",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://git.zx2c4.com/wintun-go",
+        "Hash": "0fa3db229ce2036ae779de8ba03d336b7aa826bd"
+      }
+    },
+    {
+      "build": "AwgLocalProxyCore",
+      "module": "gvisor.dev/gvisor",
+      "version": "v0.0.0-20231202080848-1f7806d17489",
+      "license_files": [
+        "gvisor.dev_gvisor@v0.0.0-20231202080848-1f7806d17489/AUTHORS",
+        "gvisor.dev_gvisor@v0.0.0-20231202080848-1f7806d17489/LICENSE"
+      ],
+      "license": "Apache-2.0",
+      "origin": {
+        "VCS": "git",
+        "URL": "https://github.com/google/gvisor",
+        "Hash": "1f7806d17489620e45d46c33933cf8f7010a1436"
+      }
+    }
+  ]
+}

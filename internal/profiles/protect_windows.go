@@ -37,6 +37,11 @@ func crypt(input []byte, decrypt bool) ([]byte, error) {
 		return nil, err
 	}
 	defer windows.LocalFree(windows.Handle(unsafe.Pointer(out.data)))
+	if decrypt {
+		// DPAPI owns a second plaintext allocation in addition to the returned
+		// Go slice. Clear that native allocation before releasing it.
+		defer clear(unsafe.Slice(out.data, int(out.size)))
+	}
 	if out.size > maxSecretBytes+4096 {
 		return nil, errors.New("DPAPI output too large")
 	}
