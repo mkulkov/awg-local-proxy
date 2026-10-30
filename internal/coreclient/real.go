@@ -23,6 +23,55 @@ import (
 
 const RealCoreVersion = "awg-local-core-0.1.0"
 
+// CoreError exposes only a known stable code, never a child-provided message.
+type CoreError struct{ Code string }
+
+func (e *CoreError) Error() string { return "core request failed: " + e.Code }
+
+// TransportError means the verified child's inherited control pipe ended.
+// Protocol, identity, hash and configuration errors are deliberately different.
+type TransportError struct{}
+
+func (*TransportError) Error() string { return "core control transport unavailable" }
+
+func IsRetryable(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var transport *TransportError
+	if errors.As(err, &transport) {
+		return true
+	}
+	var core *CoreError
+	return errors.As(err, &core) && core.Code == "connect_failed"
+}
+
+func coreResponseError(payload []byte) error {
+	var p struct {
+		Code string `json:"code"`
+	}
+	if decodeRealPayload(payload, &p) != nil {
+		return &CoreError{Code: "invalid_error_response"}
+	}
+	switch p.Code {
+	case "connect_failed", "invalid_config", "invalid_payload", "invalid_timeout", "already_active", "not_connected", "connection_cancelled", "port_unavailable", "unsupported_command":
+		return &CoreError{Code: p.Code}
+	default:
+		return &CoreError{Code: "unknown_core_error"}
+	}
+}
+
+func controlPipeError(err error) error {
+	var pathError *os.PathError
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.ErrShortWrite) || errors.Is(err, os.ErrClosed) || errors.As(err, &pathError) {
+		return &TransportError{}
+	}
+	return errors.New("invalid core control stream")
+}
+
 // ConnectRequest contains memory-only configuration. The caller owns Config and
 // should clear it after the call. The supervisor clears its encoded byte buffers;
 // the Go JSON/runtime implementation cannot guarantee complete memory erasure.
@@ -129,12 +178,12 @@ func (s *RealSupervisor) request(ctx context.Context, kind string, payload any, 
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-s.done:
-		return errors.New("core is stopped")
+		return &TransportError{}
 	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return errors.New("core is stopped")
+		return &TransportError{}
 	}
 	if err := ctx.Err(); err != nil {
 		s.mu.Unlock()
@@ -161,12 +210,21 @@ func (s *RealSupervisor) request(ctx context.Context, kind string, payload any, 
 		s.stop()
 		return ctx.Err()
 	case r := <-ch:
-		if r.err != nil || r.m.ID != id {
+		if r.err != nil {
 			s.stop()
-			return errors.New("core control pipe failed")
+			return controlPipeError(r.err)
+		}
+		if r.m.ID != id {
+			s.stop()
+			return errors.New("invalid core response identifier")
 		}
 		if r.m.Type == "error" {
-			return errors.New("core rejected request; configuration or tunnel check failed")
+			err := coreResponseError(r.m.Payload)
+			var ce *CoreError
+			if errors.As(err, &ce) && (ce.Code == "unknown_core_error" || ce.Code == "invalid_error_response") {
+				s.stop()
+			}
+			return err
 		}
 		if r.m.Type != expectedType || decodeRealPayload(r.m.Payload, target) != nil {
 			s.stop()

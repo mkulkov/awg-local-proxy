@@ -76,8 +76,8 @@ jobs:
           $lock = Get-Content -Raw core.lock.json | ConvertFrom-Json
           $sha = (git -C .ci-core rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $sha -ne $lock.source_commit) { throw 'Core checkout differs from lock' }
-          $env:AWG_PRODUCT_LAB_HELPER = Join-Path $env:RUNNER_TEMP 'awg-product-supervisor.test.exe'
-          go test -c -tags ci -o $env:AWG_PRODUCT_LAB_HELPER ./internal/coreclient
+          $env:AWG_PRODUCT_LAB_HELPER = Join-Path $env:RUNNER_TEMP 'awg-product-session.test.exe'
+          go test -c -tags ci -o $env:AWG_PRODUCT_LAB_HELPER ./internal/session
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location .ci-core
           try {

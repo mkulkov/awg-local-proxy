@@ -16,8 +16,11 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/mkulkov/awg-local-proxy/internal/autostart"
 	"github.com/mkulkov/awg-local-proxy/internal/coreclient"
+	"github.com/mkulkov/awg-local-proxy/internal/preferences"
 	"github.com/mkulkov/awg-local-proxy/internal/profiles"
+	"github.com/mkulkov/awg-local-proxy/internal/session"
 )
 
 // localAddress accepts only a decimal TCP port and always constructs IPv4
@@ -56,7 +59,19 @@ func localAddresses(socksPort, httpPort string, httpEnabled bool) (string, strin
 	return socks, http, nil
 }
 
-func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, store *profiles.Store, storageError error) fyne.Window {
+func savedProfileIndex(items []profiles.Metadata, id string) int {
+	if id == "" {
+		return -1
+	}
+	for i, m := range items {
+		if m.ID == id && !m.Demo {
+			return i
+		}
+	}
+	return -1
+}
+
+func New(a fyne.App, core coreclient.Client, real *session.Controller, store *profiles.Store, storageError error) fyne.Window {
 	title := appTitle
 	if real != nil {
 		title = "AWG Local Proxy"
@@ -76,6 +91,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	probe := widget.NewEntry()
 	probe.SetPlaceHolder("https://адрес-проверки/")
 	httpEnabled := widget.NewCheck("Включить HTTP proxy", nil)
+	reconnect := widget.NewCheck("Повторять подключение при временной ошибке (до 5 попыток)", nil)
 	socksPort := widget.NewEntry()
 	socksPort.SetText("1080")
 	httpPort := widget.NewEntry()
@@ -92,15 +108,48 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 		}
 		loaded = items
 		names := []string{defaultProfile}
-		for _, m := range items {
-			names = append(names, m.Name)
+		for i, m := range items {
+			names = append(names, strconv.Itoa(i+1)+" · "+m.Name)
 		}
 		profile.SetOptions(names)
 		profile.SetSelectedIndex(0)
 	}
 	refreshProfiles()
+	var prefStore *preferences.Store
+	var saved preferences.Settings
+	var prefErr error
+	if real != nil {
+		prefStore, prefErr = preferences.OpenDefault()
+		if prefErr == nil {
+			saved, prefErr = prefStore.LoadForAutoConnect(func(id string) error {
+				if store == nil || savedProfileIndex(loaded, id) < 0 {
+					return preferences.ErrProfileUnavailable
+				}
+				secret, err := store.ReadSecret(id)
+				clear(secret)
+				return err
+			})
+		}
+		if prefErr != nil {
+			saved = preferences.Settings{}
+		}
+		reconnect.SetChecked(saved.AutoReconnect)
+		if saved.AutoConnect {
+			i := savedProfileIndex(loaded, saved.ProfileID)
+			if i >= 0 {
+				profile.SetSelectedIndex(i + 1)
+				probe.SetText(saved.ProbeURL)
+				socksPort.SetText(strconv.Itoa(saved.SocksPort))
+				httpPort.SetText(strconv.Itoa(saved.HTTPPort))
+				httpEnabled.SetChecked(saved.HTTPEnabled)
+			} else {
+				saved = preferences.Settings{}
+			}
+		}
+	}
 	active := false
 	busy := false
+	quitting := false
 	uiDone := make(chan struct{})
 	var checkTunnel *widget.Button
 	var socksCopy, httpCopy *widget.Button
@@ -108,9 +157,11 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 		if enabled {
 			socksPort.Enable()
 			httpPort.Enable()
+			reconnect.Enable()
 		} else {
 			socksPort.Disable()
 			httpPort.Disable()
+			reconnect.Disable()
 		}
 	}
 	disableAddressCopies := func() {
@@ -131,6 +182,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 			return
 		}
 		profileID := ""
+		retryEnabled := reconnect.Checked
 		probeURL := ""
 		socksAddress := ""
 		httpAddress := ""
@@ -169,18 +221,16 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 			var s coreclient.Status
 			var err error
 			if connect && real != nil {
-				var secret []byte
-				secret, err = store.ReadSecret(profileID)
-				if err == nil {
-					s, err = real.ConnectProfile(ctx, coreclient.ConnectRequest{Config: secret, SocksAddress: socksAddress, HTTPAddress: httpAddress, ProbeURL: probeURL, TimeoutSeconds: 15})
-				}
-				clear(secret)
+				s, err = real.Start(session.Selection{ProfileID: profileID, SocksAddress: socksAddress, HTTPAddress: httpAddress, ProbeURL: probeURL, Reconnect: retryEnabled})
 			} else if connect {
 				s, err = core.Connect(ctx)
 			} else {
 				s, err = core.Disconnect(ctx)
 			}
 			fyne.Do(func() {
+				if quitting {
+					return
+				}
 				busy = false
 				primary.Enable()
 				if !connect || err != nil {
@@ -194,6 +244,9 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 					primary.SetText(startLabel)
 					status.SetText("Подключение не установлено")
 					detail.SetText("Проверьте профиль и доступность сервера. Прямой обходной выход не используется.")
+					if real != nil && s.Message != "" {
+						detail.SetText(s.Message)
+					}
 					return
 				}
 				active = connect
@@ -203,10 +256,14 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 						status.SetText("Демонстрация активна · туннеля нет")
 					} else if s.State == coreclient.Connected {
 						status.SetText("Последняя проверка туннеля прошла")
+					} else if s.State == coreclient.Connecting || s.State == coreclient.Starting {
+						status.SetText("Подключение…")
+					} else if s.State == coreclient.Reconnecting {
+						status.SetText("Повтор подключения…")
 					} else {
 						status.SetText("Туннель не подтверждён")
 					}
-					if checkTunnel != nil {
+					if checkTunnel != nil && s.State == coreclient.Connected {
 						checkTunnel.Enable()
 					}
 					if real != nil && s.ListenerReady {
@@ -222,7 +279,7 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 				if real == nil {
 					detail.SetText(s.Message)
 				} else if connect {
-					detail.SetText("Прокси доступен только локально. Другие приложения не перенаправляются автоматически.")
+					detail.SetText(s.Message)
 				} else {
 					detail.SetText("Прокси остановлен.")
 				}
@@ -279,11 +336,19 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 				defer cancel()
 				s, err := real.CheckTunnel(ctx)
 				fyne.Do(func() {
+					if quitting {
+						return
+					}
 					busy = false
 					primary.Enable()
 					checkTunnel.Enable()
 					if err != nil || s.State != coreclient.Connected {
 						status.SetText("Проверка туннеля не прошла")
+						if s.State == coreclient.Reconnecting {
+							status.SetText("Повтор подключения…")
+							checkTunnel.Disable()
+							disableAddressCopies()
+						}
 						if err != nil || s.State == coreclient.Error || s.State == coreclient.Stopped {
 							active = false
 							primary.SetText(startLabel)
@@ -301,7 +366,9 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 			}()
 		})
 		checkTunnel.Disable()
-		connection = container.NewVBox(widget.NewLabel("Профиль"), profile, widget.NewLabel("Адрес проверки через туннель"), probe, httpEnabled, status, primary, checkTunnel, detail, widget.NewSeparator(), socksRow, httpRow, widget.NewLabel("Порты меняются в настройках. Прокси работает только при активном подключении. UDP не поддерживается."))
+		retryHint := widget.NewLabel("Повтор использует тот же выбранный адрес проверки. Ошибки профиля, портов и отдельного адреса назначения не запускают повтор; отключение отменяет ожидание.")
+		retryHint.Wrapping = fyne.TextWrapWord
+		connection = container.NewVBox(widget.NewLabel("Профиль"), profile, widget.NewLabel("Адрес проверки через туннель"), probe, httpEnabled, reconnect, retryHint, status, primary, checkTunnel, detail, widget.NewSeparator(), socksRow, httpRow, widget.NewLabel("Порты меняются в настройках. Прокси работает только при активном подключении. UDP не поддерживается."))
 	}
 	name := widget.NewEntry()
 	name.SetPlaceHolder("Название демонстрационного профиля")
@@ -439,19 +506,126 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 	about.Wrapping = fyne.TextWrapWord
 	if real != nil {
 		apps.ParseMarkdown("### Настройка приложений\nСкопируйте адрес SOCKS5 со вкладки подключения и включите разрешение имён через прокси, если оно поддерживается. HTTP proxy включается отдельно.\n\n* **Браузер:** используйте отдельный профиль и настройки прокси.\n* **Telegram:** укажите SOCKS5 в настройках соединения.\n* **VS Code / Codex:** отдельные расширения и процессы могут игнорировать прокси.\n\nВыбор EXE не перехватывает трафик. UDP, QUIC, WebRTC и DNS самого приложения могут идти в обход.")
-		settings.SetText("HTTP proxy включается на вкладке подключения.\n\nАвтозапуск и автоподключение отсутствуют. Системные маршруты, DNS, proxy и firewall не изменяются.")
+		settings.SetText("HTTP proxy включается на вкладке подключения.\n\nАвтозапуск интерфейса, автоподключение и повтор соединения — раздельные настройки. Системные маршруты, DNS, proxy и firewall не изменяются.")
 		diagnostics.SetText("Core: отдельный процесс AmneziaWG\nIPC: NDJSON v1, наследуемые stdin/stdout\nПодключение подтверждается handshake и запросом по заданному вами адресу.\nТелеметрия и загрузка core при запуске отсутствуют.")
 		about.SetText("AWG Local Proxy · предварительная версия\nGo + Fyne v2.8.2\n\nОфициальный движок AmneziaWG; код synacker/amnezia-proxy не включён.\n\nDPAPI не защищает секреты от программ с правами того же пользователя.")
 	}
 	settingsPage := fyne.CanvasObject(settings)
 	if real != nil {
+		startupSync := true
+		var startup *widget.Check
+		startup = widget.NewCheck("Запускать интерфейс при входе в Windows", func(enabled bool) {
+			if startupSync {
+				return
+			}
+			startup.Disable()
+			go func() {
+				var err error
+				if enabled {
+					err = autostart.Enable()
+				} else {
+					err = autostart.Disable()
+				}
+				actual, readErr := autostart.Get()
+				fyne.Do(func() {
+					if quitting {
+						return
+					}
+					startupSync = true
+					startup.SetChecked(actual)
+					startupSync = false
+					startup.Enable()
+					if err != nil || readErr != nil {
+						message := "Не удалось изменить автозапуск. Состояние восстановлено; подключение не запускается."
+						if errors.Is(err, autostart.ErrConflict) || errors.Is(readErr, autostart.ErrConflict) {
+							message = "Запись автозапуска принадлежит другой копии приложения и не была изменена."
+						}
+						dialog.ShowInformation("Автозапуск", message, w)
+					}
+				})
+			}()
+		})
+		startupEnabled, startupErr := autostart.Get()
+		startup.SetChecked(startupEnabled)
+		startupSync = false
+		startupInfo := widget.NewLabel("Автозапуск открывает только интерфейс и не подключает профиль.")
+		startupInfo.Wrapping = fyne.TextWrapWord
+		if startupErr != nil {
+			startupInfo.SetText("Состояние автозапуска недоступно или запись принадлежит другой копии. Изменения не выполнялись.")
+		}
+		autoConnect := widget.NewCheck("Подключать сохранённый профиль при запуске", nil)
+		autoConnect.SetChecked(saved.AutoConnect)
+		prefInfo := widget.NewLabel("Сохранение автоподключения разрешает при следующем запуске запрос к выбранному сейчас адресу проверки. Настройки защищены DPAPI. Кнопка «Отключить» останавливает текущий сеанс; для отмены следующего автоподключения снимите флажок и сохраните настройки.")
+		prefInfo.Wrapping = fyne.TextWrapWord
+		if prefErr != nil {
+			prefInfo.SetText("Защищённые настройки не прочитаны. Автоподключение отключено; выберите профиль и сохраните настройки заново.")
+		}
+		var saveStartup *widget.Button
+		saveStartup = widget.NewButton("Сохранить настройки подключения", func() {
+			if prefStore == nil {
+				dialog.ShowInformation("Настройки", "Защищённое хранилище недоступно. Автоподключение не сохранено.", w)
+				return
+			}
+			if active || busy {
+				dialog.ShowInformation("Сначала отключитесь", "Сохраните настройки после отключения текущего соединения.", w)
+				return
+			}
+			value := preferences.Settings{AutoConnect: autoConnect.Checked, AutoReconnect: reconnect.Checked}
+			if value.AutoConnect {
+				i := profile.SelectedIndex() - 1
+				if i < 0 || i >= len(loaded) || loaded[i].Demo {
+					dialog.ShowInformation("Настройки", "Выберите импортированный профиль на вкладке подключения.", w)
+					return
+				}
+				sp, se := strconv.Atoi(socksPort.Text)
+				hp, he := strconv.Atoi(httpPort.Text)
+				value.ProfileID = loaded[i].ID
+				value.ProbeURL = probe.Text
+				value.SocksPort = sp
+				value.HTTPPort = hp
+				value.HTTPEnabled = httpEnabled.Checked
+				if se != nil || he != nil || value.Validate() != nil {
+					dialog.ShowInformation("Настройки", "Проверьте адрес HTTP(S), оба порта и выбранный профиль.", w)
+					return
+				}
+			}
+			saveStartup.Disable()
+			go func() {
+				var err error
+				if value.AutoConnect {
+					var secret []byte
+					secret, err = store.ReadSecret(value.ProfileID)
+					clear(secret)
+				}
+				if err == nil {
+					err = prefStore.Save(value)
+				}
+				fyne.Do(func() {
+					if quitting {
+						return
+					}
+					saveStartup.Enable()
+					if err != nil {
+						dialog.ShowInformation("Настройки", "Не удалось сохранить защищённые настройки. Автоподключение не изменено.", w)
+						autoConnect.SetChecked(saved.AutoConnect)
+						return
+					}
+					saved = value
+					prefInfo.SetText("Настройки сохранены. Автозапуск интерфейса отдельно управляется флажком выше.")
+				})
+			}()
+		})
+		if prefStore == nil {
+			saveStartup.Disable()
+			autoConnect.Disable()
+		}
 		portHint := widget.NewLabel("Порты можно изменить только после отключения. После перезапуска они сбрасываются на 1080 и 8080.")
+		portHint.SetText("Порты можно изменить только после отключения. Для автоподключения сохраняются выбранные значения; иначе после запуска используются 1080 и 8080.")
 		portHint.Wrapping = fyne.TextWrapWord
-		settingsPage = container.NewVBox(settings, widget.NewLabel("Порт SOCKS5 (127.0.0.1)"), socksPort, widget.NewLabel("Порт HTTP (127.0.0.1)"), httpPort, portHint)
+		settingsPage = container.NewVBox(settings, startup, startupInfo, autoConnect, prefInfo, saveStartup, widget.NewLabel("Порт SOCKS5 (127.0.0.1)"), socksPort, widget.NewLabel("Порт HTTP (127.0.0.1)"), httpPort, portHint)
 	}
 	tabs := container.NewAppTabs(container.NewTabItem("Подключение", container.NewVScroll(container.NewPadded(connection))), container.NewTabItem("Профили", container.NewVScroll(container.NewPadded(profilePage))), container.NewTabItem("Приложения", container.NewVScroll(apps)), container.NewTabItem("Настройки", container.NewVScroll(container.NewPadded(settingsPage))), container.NewTabItem("Диагностика", container.NewPadded(diagnostics)), container.NewTabItem("О программе", container.NewPadded(about)))
 	w.SetContent(tabs)
-	quitting := false
 	quit := func() {
 		if quitting {
 			return
@@ -523,6 +697,25 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 								if s.State == coreclient.Degraded {
 									status.SetText("Туннель требует проверки")
 								}
+								if s.State == coreclient.Connecting || s.State == coreclient.Starting || s.State == coreclient.Reconnecting {
+									if s.State == coreclient.Reconnecting {
+										status.SetText("Повтор подключения…")
+									} else {
+										status.SetText("Подключение…")
+									}
+									detail.SetText(s.Message)
+									checkTunnel.Disable()
+									disableAddressCopies()
+								}
+								if s.State == coreclient.Connected {
+									status.SetText("Последняя проверка туннеля прошла")
+									detail.SetText("Прокси доступен только локально. Другие приложения не перенаправляются автоматически.")
+									checkTunnel.Enable()
+									socksCopy.Enable()
+									if s.HTTPAddress != "" {
+										httpCopy.Enable()
+									}
+								}
 								if s.State == coreclient.Stopped || s.State == coreclient.Error {
 									active = false
 									status.SetText("Подключение остановлено")
@@ -540,6 +733,24 @@ func New(a fyne.App, core coreclient.Client, real *coreclient.RealSupervisor, st
 				}
 			}
 		}()
+	}
+	if real != nil && saved.AutoConnect {
+		// Loading is read-only. Only an exact, previously saved and decryptable
+		// non-demo selection may initiate this one startup action.
+		startupSettings := saved
+		fyne.Do(func() {
+			if quitting || active || busy {
+				return
+			}
+			i := profile.SelectedIndex() - 1
+			if i < 0 || i >= len(loaded) || loaded[i].ID != startupSettings.ProfileID || loaded[i].Demo {
+				return
+			}
+			if probe.Text != startupSettings.ProbeURL || socksPort.Text != strconv.Itoa(startupSettings.SocksPort) || httpPort.Text != strconv.Itoa(startupSettings.HTTPPort) || httpEnabled.Checked != startupSettings.HTTPEnabled || reconnect.Checked != startupSettings.AutoReconnect {
+				return
+			}
+			run(true)
+		})
 	}
 	return w
 }

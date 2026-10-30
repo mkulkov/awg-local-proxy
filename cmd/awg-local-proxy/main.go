@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/mkulkov/awg-local-proxy/internal/coreclient"
 	"github.com/mkulkov/awg-local-proxy/internal/coreclient/mock"
 	"github.com/mkulkov/awg-local-proxy/internal/profiles"
+	"github.com/mkulkov/awg-local-proxy/internal/session"
 	"github.com/mkulkov/awg-local-proxy/internal/ui"
 )
 
@@ -67,13 +69,33 @@ func main() {
 		w.ShowAndRun()
 		return
 	}
-	defer core.Close()
 	root, storageErr := profiles.DefaultRoot()
 	var store *profiles.Store
 	if storageErr == nil {
 		store, storageErr = profiles.Open(root, profiles.DPAPI{})
 	}
-	w := ui.New(a, core, real, store, storageErr)
+	var managed *session.Controller
+	if real != nil {
+		factory := func(ctx context.Context) (session.Backend, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			child, err := coreclient.StartReal(filepath.Join(filepath.Dir(exe), "awg-proxy-core.exe"), expectedRealCoreSHA256)
+			// The controller owns even a child created after cancellation and
+			// retains it until shutdown is positively confirmed.
+			return child, err
+		}
+		load := func(id string) ([]byte, error) {
+			if store == nil {
+				return nil, fmt.Errorf("profile storage unavailable")
+			}
+			return store.ReadSecret(id)
+		}
+		managed = session.New(factory, load, real)
+		core = managed
+	}
+	defer core.Close()
+	w := ui.New(a, core, managed, store, storageErr)
 	instance.Watch(func() { fyne.Do(func() { w.Show(); w.RequestFocus() }) })
 	w.ShowAndRun()
 }

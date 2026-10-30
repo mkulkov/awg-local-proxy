@@ -45,6 +45,19 @@ func runRealFixture() int {
 				return 2
 			}
 		case "connect":
+			if mode == "error_transient" || mode == "error_permanent" || mode == "error_unknown" {
+				code := "connect_failed"
+				if mode == "error_permanent" {
+					code = "invalid_config"
+				}
+				if mode == "error_unknown" {
+					code = "SYNTHETIC_PRIVATE_SECRET"
+				}
+				if coreclient.WriteMessage(os.Stdout, "error", m.ID, map[string]string{"code": code}) != nil {
+					return 2
+				}
+				continue
+			}
 			if mode == "stalled" {
 				if marker := os.Getenv("AWG_TEST_REAL_OWNER_MARKER"); marker != "" {
 					if os.WriteFile(marker, []byte(strconv.Itoa(os.Getpid())), 0600) != nil {
@@ -216,5 +229,20 @@ func TestRealSupervisorCloseKillsStalledJob(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("request did not exit")
+	}
+}
+
+func TestRealSupervisorReturnsOnlySafeTypedRetryCodes(t *testing.T) {
+	for _, tt := range []struct {
+		mode  string
+		retry bool
+	}{{"error_transient", true}, {"error_permanent", false}, {"error_unknown", false}} {
+		t.Run(tt.mode, func(t *testing.T) {
+			s := startRealFixture(t, tt.mode)
+			_, err := s.ConnectProfile(context.Background(), syntheticConnectRequest())
+			if err == nil || coreclient.IsRetryable(err) != tt.retry || strings.Contains(err.Error(), "SYNTHETIC_PRIVATE_SECRET") {
+				t.Fatal("unsafe or misclassified child error")
+			}
+		})
 	}
 }
