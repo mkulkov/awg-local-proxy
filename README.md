@@ -1,5 +1,7 @@
 # AWG Local Proxy
 
+**Текущая сборка рассчитана на 64-разрядную Windows 10 или новее (Windows Server 2016 или новее).** На 32-разрядной Windows и в более старых версиях Windows она не поддерживается.
+
 Windows-приложение на Go и Fyne для приложений, которые самостоятельно настроены на локальный SOCKS5 или HTTP proxy. Системные маршруты, DNS, proxy, firewall и службы не настраиваются; перехват трафика по EXE не выполняется.
 
 Используется независимый отдельный [core](https://github.com/mkulkov/awg-local-proxy-core) на основе официального AmneziaWG: [выбор и лицензии](docs/CORE_SELECTION.md). Код `synacker/amnezia-proxy` не включён: [лицензионный аудит](docs/LICENSE_AUDIT.md). Базовая сборка без закреплённого core остаётся сетевой демонстрацией.
